@@ -1,0 +1,123 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>ROS2 Log Viewer</title>
+    <script src="https://cdn.jsdelivr.net/npm/roslib@1/build/roslib.min.js"></script>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+      }
+      .node-section {
+        margin-bottom: 20px;
+        border: 1px solid #ddd;
+        padding: 10px;
+      }
+      .node-header {
+        cursor: pointer;
+        font-weight: bold;
+      }
+      .log-entry {
+        margin-left: 20px;
+        font-size: 0.9em;
+      }
+      .DEBUG {
+        color: gray;
+      }
+      .INFO {
+        color: black;
+      }
+      .WARN {
+        color: orange;
+      }
+      .ERROR {
+        color: red;
+      }
+      .FATAL {
+        color: darkred;
+        font-weight: bold;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>ROS2 Log Viewer</h1>
+    <p>
+      Connection status: <span id="status" style="font-weight: bold">N/A</span>
+    </p>
+    <div id="logs-container"></div>
+
+    <script>
+      // Map log levels to human-readable strings (from rcl_interfaces/msg/Log)
+      const LOG_LEVELS = {
+        10: "DEBUG",
+        20: "INFO",
+        30: "WARN",
+        40: "ERROR",
+        50: "FATAL",
+      };
+
+      // Connect to rosbridge WebSocket
+      const ros = new ROSLIB.Ros({ url: "ws://localhost:9090" });
+
+      ros.on("connection", () => {
+        document.getElementById("status").innerHTML = "Connected";
+      });
+
+      ros.on("error", (error) => {
+        document.getElementById("status").innerHTML = `Error: ${error}`;
+      });
+
+      ros.on("close", () => {
+        document.getElementById("status").innerHTML = "Closed";
+      });
+
+      // Subscribe to /rosout
+      const logListener = new ROSLIB.Topic({
+        ros: ros,
+        name: "/rosout",
+        messageType: "rcl_interfaces/msg/Log",
+      });
+
+      // Object to track logs per node
+      const nodeLogs = {};
+
+      logListener.subscribe((message) => {
+        const nodeName = message.name || "unknown_node";
+        const level = LOG_LEVELS[message.level] || "UNKNOWN";
+        const timestamp = new Date(
+          message.stamp.sec * 1000 + message.stamp.nanosec / 1e6,
+        ).toLocaleString();
+        const logText = `[${timestamp}] [${level}] ${message.msg} (from ${message.file}:${message.line})`;
+
+        // Create node section if it doesn't exist
+        if (!nodeLogs[nodeName]) {
+          const container = document.getElementById("logs-container");
+          const section = document.createElement("div");
+          section.className = "node-section";
+          section.innerHTML = `
+                    <div class="node-header">${nodeName} (click to expand/collapse)</div>
+                    <div class="node-logs" style="display: none;"></div>
+                `;
+          section
+            .querySelector(".node-header")
+            .addEventListener("click", () => {
+              const logsDiv = section.querySelector(".node-logs");
+              logsDiv.style.display =
+                logsDiv.style.display === "none" ? "block" : "none";
+            });
+          container.appendChild(section);
+          nodeLogs[nodeName] = section.querySelector(".node-logs");
+        }
+
+        // Append log entry
+        const entry = document.createElement("div");
+        entry.className = `log-entry ${level}`;
+        entry.textContent = logText;
+        nodeLogs[nodeName].appendChild(entry);
+
+        // Auto-scroll to bottom (optional)
+        nodeLogs[nodeName].scrollTop = nodeLogs[nodeName].scrollHeight;
+      });
+    </script>
+  </body>
+</html>
