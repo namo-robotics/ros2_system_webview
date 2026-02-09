@@ -1,10 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { LogEntry, LogLevel } from "@/types/ros";
+import type { LogEntry } from "@/types/ros";
 import NodeSection from "./NodeSection";
-
-const ALL_LEVELS: LogLevel[] = ["DEBUG", "INFO", "WARN", "ERROR", "FATAL"];
 
 interface LogViewerProps {
   logs: LogEntry[];
@@ -12,59 +10,24 @@ interface LogViewerProps {
 }
 
 export default function LogViewer({ logs, onClear }: LogViewerProps) {
-  const [filterLevel, setFilterLevel] = useState<LogLevel | "ALL">("ALL");
   const [filterNode, setFilterNode] = useState("");
 
   // Group logs by node
   const grouped = useMemo(() => {
     const map = new Map<string, LogEntry[]>();
     for (const entry of logs) {
-      if (filterLevel !== "ALL" && entry.level !== filterLevel) continue;
       if (filterNode && !entry.nodeName.toLowerCase().includes(filterNode.toLowerCase())) continue;
       const arr = map.get(entry.nodeName) || [];
       arr.push(entry);
       map.set(entry.nodeName, arr);
     }
     return map;
-  }, [logs, filterLevel, filterNode]);
-
-  const nodeNames = useMemo(() => {
-    const set = new Set<string>();
-    for (const entry of logs) set.add(entry.nodeName);
-    return Array.from(set).sort();
-  }, [logs]);
+  }, [logs, filterNode]);
 
   return (
     <div className="space-y-4">
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-3">
-        {/* Level filter */}
-        <div className="flex items-center gap-1.5 rounded-lg border border-gray-800 bg-gray-900 p-1">
-          <button
-            onClick={() => setFilterLevel("ALL")}
-            className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
-              filterLevel === "ALL"
-                ? "bg-gray-700 text-white"
-                : "text-gray-400 hover:text-gray-200"
-            }`}
-          >
-            All
-          </button>
-          {ALL_LEVELS.map((level) => (
-            <button
-              key={level}
-              onClick={() => setFilterLevel(level)}
-              className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
-                filterLevel === level
-                  ? "bg-gray-700 text-white"
-                  : "text-gray-400 hover:text-gray-200"
-              }`}
-            >
-              {level}
-            </button>
-          ))}
-        </div>
-
         {/* Node filter */}
         <input
           type="text"

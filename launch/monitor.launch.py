@@ -35,8 +35,7 @@ def generate_launch_description():
             ])
         ]),
         launch_arguments={
-            'port': LaunchConfiguration('rosbridge_port'),
-            'retry_startup_delay': '2.0',
+            'port': '9090',
         }.items(),
         condition=IfCondition(LaunchConfiguration('launch_rosbridge')),
     )
@@ -51,6 +50,6 @@ def generate_launch_description():
             executable='http_server',
             name='static_http_server',
             output='screen',
-            parameters=[{'port': LaunchConfiguration('port')}],
+            parameters=[{'port': 2525}],
         ),
     ])

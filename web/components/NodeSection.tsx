@@ -1,7 +1,9 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useMemo } from "react";
 import type { LogEntry, LogLevel } from "@/types/ros";
+
+const ALL_LEVELS: LogLevel[] = ["DEBUG", "INFO", "WARN", "ERROR", "FATAL"];
 
 const LEVEL_STYLES: Record<LogLevel, string> = {
   DEBUG: "text-gray-400",
@@ -28,13 +30,12 @@ interface NodeSectionProps {
 
 export default function NodeSection({ nodeName, entries }: NodeSectionProps) {
   const [expanded, setExpanded] = useState(true);
-  const logsEndRef = useRef<HTMLDivElement>(null);
+  const [filterLevel, setFilterLevel] = useState<LogLevel | "ALL">("ALL");
 
-  useEffect(() => {
-    if (expanded) {
-      logsEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [entries.length, expanded]);
+  const filteredEntries = useMemo(() => {
+    if (filterLevel === "ALL") return entries;
+    return entries.filter((entry) => entry.level === filterLevel);
+  }, [entries, filterLevel]);
 
   const lastLevel = entries.length > 0 ? entries[entries.length - 1].level : null;
 
@@ -69,21 +70,51 @@ export default function NodeSection({ nodeName, entries }: NodeSectionProps) {
             </span>
           )}
           <span className="text-xs text-gray-500">
-            {entries.length} message{entries.length !== 1 ? "s" : ""}
+            {filterLevel === "ALL" ? entries.length : `${filteredEntries.length}/${entries.length}`} message{entries.length !== 1 ? "s" : ""}
           </span>
         </div>
       </button>
 
+      {/* Per-node level filter */}
+      {expanded && (
+        <div className="flex items-center gap-1 px-4 py-2 border-t border-gray-800 bg-gray-900">
+          <span className="text-[10px] text-gray-500 mr-1">Filter:</span>
+          <button
+            onClick={() => setFilterLevel("ALL")}
+            className={`rounded px-2 py-0.5 text-[10px] font-medium transition-colors ${
+              filterLevel === "ALL"
+                ? "bg-gray-700 text-white"
+                : "text-gray-400 hover:text-gray-200"
+            }`}
+          >
+            All
+          </button>
+          {ALL_LEVELS.map((level) => (
+            <button
+              key={level}
+              onClick={() => setFilterLevel(level)}
+              className={`rounded px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                filterLevel === level
+                  ? "bg-gray-700 text-white"
+                  : "text-gray-400 hover:text-gray-200"
+              }`}
+            >
+              {level}
+            </button>
+          ))}
+        </div>
+      )}
+
       {expanded && (
         <div className="max-h-80 overflow-y-auto border-t border-gray-800 bg-gray-950/50">
-          {entries.length === 0 ? (
+          {filteredEntries.length === 0 ? (
             <p className="px-4 py-3 text-xs text-gray-600 italic">
-              No messages yet
+              {entries.length === 0 ? "No messages yet" : "No messages match the selected filter"}
             </p>
           ) : (
             <table className="w-full text-xs">
               <tbody>
-                {entries.map((entry) => (
+                {filteredEntries.map((entry) => (
                   <tr
                     key={entry.id}
                     className="border-b border-gray-800/50 hover:bg-gray-800/30"
@@ -111,7 +142,6 @@ export default function NodeSection({ nodeName, entries }: NodeSectionProps) {
               </tbody>
             </table>
           )}
-          <div ref={logsEndRef} />
         </div>
       )}
     </div>

@@ -4,6 +4,8 @@ A real-time system monitoring dashboard for ROS 2. It provides a web-based UI th
 
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
+![ROS2 System Monitor Screenshot](assets/ros2_system_monitor.png)
+
 ---
 
 ## Features
