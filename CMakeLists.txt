@@ -38,8 +38,17 @@ install(TARGETS
   DESTINATION lib/${PROJECT_NAME}
 )
 
+# Build the Next.js frontend (static export)
+find_program(NPM_EXECUTABLE npm REQUIRED)
+add_custom_target(frontend_build ALL
+  COMMAND ${NPM_EXECUTABLE} install
+  COMMAND ${NPM_EXECUTABLE} run build
+  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/web
+  COMMENT "Building Next.js frontend"
+)
+
 install(DIRECTORY
-  web/
+  web/out/
   DESTINATION share/${PROJECT_NAME}/web
 )
 

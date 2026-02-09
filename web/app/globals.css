@@ -1,0 +1,15 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-debug: #6b7280;
+  --color-info: #2563eb;
+  --color-warn: #d97706;
+  --color-error: #dc2626;
+  --color-fatal: #7f1d1d;
+}
+
+body {
+  @apply bg-gray-950 text-gray-100 antialiased;
+}

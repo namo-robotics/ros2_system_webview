@@ -2,45 +2,216 @@
 #include <httplib.h>
 #include <thread>
 #include <filesystem>
+#include <fstream>
+#include <sstream>
 #include <string>
+#include <vector>
+#include <numeric>
+#include <mutex>
 #include <ament_index_cpp/get_package_share_directory.hpp>
 
+// ── CPU snapshot from /proc/stat ──────────────────────────────────────────────
+struct CpuTimes {
+  std::string name;        // "cpu", "cpu0", "cpu1", …
+  unsigned long long user, nice, system, idle, iowait, irq, softirq, steal;
+
+  unsigned long long total() const {
+    return user + nice + system + idle + iowait + irq + softirq + steal;
+  }
+  unsigned long long active() const { return total() - idle - iowait; }
+};
+
+static std::vector<CpuTimes> read_cpu_times() {
+  std::vector<CpuTimes> result;
+  std::ifstream f("/proc/stat");
+  std::string line;
+  while (std::getline(f, line)) {
+    if (line.rfind("cpu", 0) != 0) break;          // lines stop starting with "cpu"
+    std::istringstream ss(line);
+    CpuTimes c{};
+    ss >> c.name >> c.user >> c.nice >> c.system >> c.idle
+       >> c.iowait >> c.irq >> c.softirq >> c.steal;
+    result.push_back(c);
+  }
+  return result;
+}
+
+// ── Memory info from /proc/meminfo ────────────────────────────────────────────
+struct MemInfo {
+  unsigned long long total_kb  = 0;
+  unsigned long long free_kb   = 0;
+  unsigned long long avail_kb  = 0;
+  unsigned long long buffers_kb = 0;
+  unsigned long long cached_kb = 0;
+  unsigned long long swap_total_kb = 0;
+  unsigned long long swap_free_kb  = 0;
+};
+
+static MemInfo read_meminfo() {
+  MemInfo m;
+  std::ifstream f("/proc/meminfo");
+  std::string line;
+  while (std::getline(f, line)) {
+    std::istringstream ss(line);
+    std::string key;
+    unsigned long long val;
+    ss >> key >> val;                               // "MemTotal:", 1234
+    if      (key == "MemTotal:")     m.total_kb  = val;
+    else if (key == "MemFree:")      m.free_kb   = val;
+    else if (key == "MemAvailable:") m.avail_kb  = val;
+    else if (key == "Buffers:")      m.buffers_kb = val;
+    else if (key == "Cached:")       m.cached_kb = val;
+    else if (key == "SwapTotal:")    m.swap_total_kb = val;
+    else if (key == "SwapFree:")     m.swap_free_kb  = val;
+  }
+  return m;
+}
+
+// ── Load average from /proc/loadavg ───────────────────────────────────────────
+struct LoadAvg {
+  double one = 0, five = 0, fifteen = 0;
+};
+
+static LoadAvg read_loadavg() {
+  LoadAvg la;
+  std::ifstream f("/proc/loadavg");
+  f >> la.one >> la.five >> la.fifteen;
+  return la;
+}
+
+// ── Build the JSON response ───────────────────────────────────────────────────
+// prev_cpu is the *previous* sample so we can compute a delta-based percentage.
+static std::string build_system_json(
+    const std::vector<CpuTimes> &prev,
+    const std::vector<CpuTimes> &cur,
+    const MemInfo &mem,
+    const LoadAvg &la)
+{
+  auto pct = [](const CpuTimes &a, const CpuTimes &b) -> double {
+    auto dt = b.total() - a.total();
+    auto da = b.active() - a.active();
+    return dt == 0 ? 0.0 : 100.0 * static_cast<double>(da) / static_cast<double>(dt);
+  };
+
+  std::ostringstream js;
+  js << std::fixed;
+  js.precision(1);
+
+  js << "{";
+  // overall CPU
+  if (!prev.empty() && !cur.empty()) {
+    js << "\"cpu_percent\":" << pct(prev[0], cur[0]) << ",";
+  } else {
+    js << "\"cpu_percent\":0,";
+  }
+
+  // per-core
+  js << "\"cores\":[";
+  for (size_t i = 1; i < cur.size() && i < prev.size(); ++i) {
+    if (i > 1) js << ",";
+    js << "{\"name\":\"" << cur[i].name << "\",\"percent\":" << pct(prev[i], cur[i]) << "}";
+  }
+  js << "],";
+
+  // memory (in MB)
+  auto to_mb = [](unsigned long long kb) { return static_cast<double>(kb) / 1024.0; };
+  unsigned long long used_kb = mem.total_kb - mem.avail_kb;
+  js << "\"memory\":{";
+  js << "\"total_mb\":" << to_mb(mem.total_kb) << ",";
+  js << "\"used_mb\":"  << to_mb(used_kb) << ",";
+  js << "\"free_mb\":"  << to_mb(mem.avail_kb) << ",";
+  js << "\"buffers_mb\":" << to_mb(mem.buffers_kb) << ",";
+  js << "\"cached_mb\":" << to_mb(mem.cached_kb) << ",";
+  js << "\"percent\":" << (mem.total_kb == 0 ? 0.0 : 100.0 * static_cast<double>(used_kb) / static_cast<double>(mem.total_kb));
+  js << "},";
+
+  // swap
+  unsigned long long swap_used = mem.swap_total_kb - mem.swap_free_kb;
+  js << "\"swap\":{";
+  js << "\"total_mb\":" << to_mb(mem.swap_total_kb) << ",";
+  js << "\"used_mb\":"  << to_mb(swap_used) << ",";
+  js << "\"percent\":" << (mem.swap_total_kb == 0 ? 0.0 : 100.0 * static_cast<double>(swap_used) / static_cast<double>(mem.swap_total_kb));
+  js << "},";
+
+  // load average
+  js << "\"load_avg\":{\"one\":" << la.one
+     << ",\"five\":" << la.five
+     << ",\"fifteen\":" << la.fifteen << "}";
+
+  js << "}";
+  return js.str();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 int main(int argc, char **argv) {
   rclcpp::init(argc, argv);
   auto node = rclcpp::Node::make_shared("http_server");
 
-  // Get the path to the installed web directory
-  std::string web_dir = ament_index_cpp::get_package_share_directory("ros2_system_monitor") + "/web";
+  // Declare configurable port parameter (default 2525)
+  node->declare_parameter<int>("port", 2525);
+  int port = node->get_parameter("port").as_int();
 
-  // Check if directory exists
+  // Get the path to the installed web directory
+  std::string web_dir =
+      ament_index_cpp::get_package_share_directory("ros2_system_monitor") + "/web";
+
   if (!std::filesystem::exists(web_dir)) {
     RCLCPP_ERROR(node->get_logger(), "Web directory not found: %s", web_dir.c_str());
     return 1;
   }
 
-  // Start HTTP server in a separate thread for non-blocking operation
+  // Shared CPU sample (protected by mutex) — background thread updates it once
+  // per second so the API response contains a delta-based CPU percentage.
+  std::mutex cpu_mtx;
+  std::vector<CpuTimes> prev_cpu = read_cpu_times();
+
+  std::thread sampler([&]() {
+    while (rclcpp::ok()) {
+      std::this_thread::sleep_for(std::chrono::seconds(1));
+      auto snapshot = read_cpu_times();
+      {
+        std::lock_guard<std::mutex> lk(cpu_mtx);
+        prev_cpu = snapshot;
+      }
+    }
+  });
+
+  // Start HTTP server in a separate thread
   std::thread server_thread([&]() {
     httplib::Server svr;
 
-    // Serve static files from the web directory at root "/"
+    // ── API: system stats ─────────────────────────────────────────────────
+    svr.Get("/api/system", [&](const httplib::Request & /*req*/, httplib::Response &res) {
+      std::vector<CpuTimes> prev_snapshot;
+      {
+        std::lock_guard<std::mutex> lk(cpu_mtx);
+        prev_snapshot = prev_cpu;
+      }
+      auto cur = read_cpu_times();
+      auto mem = read_meminfo();
+      auto la  = read_loadavg();
+
+      res.set_header("Access-Control-Allow-Origin", "*");
+      res.set_content(build_system_json(prev_snapshot, cur, mem, la), "application/json");
+    });
+
+    // ── Static file serving ───────────────────────────────────────────────
     svr.set_mount_point("/", web_dir.c_str());
 
-    // Handle errors gracefully
     svr.set_error_handler([](const httplib::Request & /*req*/, httplib::Response &res) {
       res.set_content("404 Not Found", "text/plain");
       res.status = 404;
     });
 
-    // Listen on port 2525
-    if (!svr.listen("0.0.0.0", 2525)) {
-      RCLCPP_ERROR(node->get_logger(), "Failed to start HTTP server on port 2525");
+    RCLCPP_INFO(node->get_logger(), "HTTP server listening on port %d", port);
+    if (!svr.listen("0.0.0.0", port)) {
+      RCLCPP_ERROR(node->get_logger(), "Failed to start HTTP server on port %d", port);
     }
   });
 
-  // Spin the ROS node (though not strictly needed here, allows integration if expanded)
   rclcpp::spin(node);
 
-  // Cleanup
+  sampler.join();
   server_thread.join();
   rclcpp::shutdown();
   return 0;
