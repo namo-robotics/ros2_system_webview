@@ -38,14 +38,21 @@ install(TARGETS
   DESTINATION lib/${PROJECT_NAME}
 )
 
-# Build the Next.js frontend (static export)
-find_program(NPM_EXECUTABLE npm REQUIRED)
-add_custom_target(frontend_build ALL
-  COMMAND ${NPM_EXECUTABLE} install
-  COMMAND ${NPM_EXECUTABLE} run build
-  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/web
-  COMMENT "Building Next.js frontend"
-)
+# ── Frontend ───────────────────────────────────────────────────────────────────
+# By default the pre-built static export in web/out/ is installed directly.
+# This is required for the ROS build farm which has no internet access.
+# Set -DBUILD_FRONTEND=ON when building locally to rebuild via npm.
+option(BUILD_FRONTEND "Rebuild the Next.js frontend during the build" OFF)
+
+if(BUILD_FRONTEND)
+  find_program(NPM_EXECUTABLE npm REQUIRED)
+  add_custom_target(frontend_build ALL
+    COMMAND ${NPM_EXECUTABLE} install
+    COMMAND ${NPM_EXECUTABLE} run build
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/web
+    COMMENT "Building Next.js frontend"
+  )
+endif()
 
 install(DIRECTORY
   web/out/

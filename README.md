@@ -63,7 +63,7 @@ Clone into a colcon workspace and build:
 ```bash
 mkdir -p ~/ros2_ws/src
 cd ~/ros2_ws/src
-git clone https://github.com/<your-org>/ros2_system_monitor.git
+git clone https://github.com/namo-robotics/ros2_system_monitor.git
 
 cd ~/ros2_ws
 source /opt/ros/${ROS_DISTRO}/setup.bash
