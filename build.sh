@@ -69,9 +69,9 @@ fi
 # ── Colcon build ───────────────────────────────────────────────────────────────
 echo "▶ Building ROS package"
 cd "$SCRIPT_DIR"
-colcon build --packages-select ros2_system_monitor --symlink-install
+colcon build --packages-select ros2_system_webview --symlink-install
 
 echo ""
 echo "✔ Build complete. To run:"
 echo "  source install/setup.bash"
-echo "  ros2 launch ros2_system_monitor monitor.launch.py"
+echo "  ros2 launch ros2_system_webview monitor.launch.py"

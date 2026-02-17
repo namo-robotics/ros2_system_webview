@@ -46,7 +46,7 @@ def generate_launch_description():
         launch_rosbridge_arg,
         rosbridge_launch,
         Node(
-            package='ros2_system_monitor',
+            package='ros2_system_webview',
             executable='http_server',
             name='static_http_server',
             output='screen',

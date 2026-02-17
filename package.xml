@@ -1,12 +1,12 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>ros2_system_monitor</name>
+  <name>ros2_system_webview</name>
   <version>1.0.0</version>
   <description>Real-time web-based system monitor for ROS 2 — CPU, memory, swap, load average, and /rosout log viewer</description>
   <maintainer email="davewbrwn@gmail.com">david</maintainer>
   <license>MIT</license>
-  <url type="repository">https://github.com/namo-robotics/ros2_system_monitor</url>
+  <url type="repository">https://github.com/namo-robotics/ros2_system_webview</url>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 

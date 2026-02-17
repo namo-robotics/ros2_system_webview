@@ -1,10 +1,10 @@
-# ros2_system_monitor
+# ros2_system_webview
 
 A real-time system monitoring dashboard for ROS 2. It provides a web-based UI that displays live CPU, memory, swap, and load average statistics alongside a scrollable `/rosout` log viewer — all served from a single ROS 2 node.
 
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
-![ROS2 System Monitor Screenshot](assets/ros2_system_monitor.png)
+![ROS2 System Monitor Screenshot](assets/ros2_system_webview.png)
 
 ---
 
@@ -65,15 +65,15 @@ Clone into a colcon workspace and build:
 ```bash
 mkdir -p ~/ros2_ws/src
 cd ~/ros2_ws/src
-git clone https://github.com/namo-robotics/ros2_system_monitor.git
+git clone https://github.com/namo-robotics/ros2_system_webview.git
 
 cd ~/ros2_ws
 source /opt/ros/${ROS_DISTRO}/setup.bash
-colcon build --packages-select ros2_system_monitor
+colcon build --packages-select ros2_system_webview
 source install/setup.bash
 ```
 
-The build automatically runs `npm install && npm run build` inside the `web/` directory and installs the static export to `share/ros2_system_monitor/web`.
+The build automatically runs `npm install && npm run build` inside the `web/` directory and installs the static export to `share/ros2_system_webview/web`.
 
 ## Usage
 
@@ -83,7 +83,7 @@ The included launch file starts both **rosbridge_websocket** and the **http_serv
 
 ```bash
 source ~/ros2_ws/install/setup.bash
-ros2 launch ros2_system_monitor monitor.launch.py
+ros2 launch ros2_system_webview monitor.launch.py
 ```
 
 Then open **http://localhost:2525** in a browser.
@@ -91,7 +91,7 @@ Then open **http://localhost:2525** in a browser.
 #### Changing the port
 
 ```bash
-ros2 launch ros2_system_monitor monitor.launch.py port:=8080
+ros2 launch ros2_system_webview monitor.launch.py port:=8080
 ```
 
 ### Run the node directly
@@ -99,7 +99,7 @@ ros2 launch ros2_system_monitor monitor.launch.py port:=8080
 If you already have rosbridge running separately:
 
 ```bash
-ros2 run ros2_system_monitor http_server --ros-args -p port:=2525
+ros2 run ros2_system_webview http_server --ros-args -p port:=2525
 ```
 
 ### Development mode
@@ -108,7 +108,7 @@ A helper script runs the Next.js dev server (with hot-reload on port 3000), the 
 
 ```bash
 # Build once first
-colcon build --packages-select ros2_system_monitor
+colcon build --packages-select ros2_system_webview
 source install/setup.bash
 
 ./dev.sh
@@ -154,7 +154,7 @@ Returns a JSON object with current system statistics:
 ## Project Structure
 
 ```
-ros2_system_monitor/
+ros2_system_webview/
 ├── CMakeLists.txt              # ament_cmake build + frontend build
 ├── package.xml                 # ROS 2 package manifest
 ├── dev.sh                      # Development helper script
