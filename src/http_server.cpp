@@ -148,8 +148,8 @@ int main(int argc, char **argv) {
   auto node = rclcpp::Node::make_shared("http_server");
 
   // Declare configurable port parameter (default 2525)
-  node->declare_parameter<int>("port", 2525);
-  int port = node->get_parameter("port").as_int();
+  node->declare_parameter("http_port", 2525);
+  int port = static_cast<int>(node->get_parameter("http_port").as_int());
 
   // Get the path to the installed web directory
   std::string web_dir =
@@ -176,43 +176,52 @@ int main(int argc, char **argv) {
     }
   });
 
+  // Create server outside thread so we can stop it on shutdown
+  httplib::Server svr;
+
+  // ── API: system stats ─────────────────────────────────────────────────
+  svr.Get("/api/system", [&](const httplib::Request & /*req*/, httplib::Response &res) {
+    std::vector<CpuTimes> prev_snapshot;
+    {
+      std::lock_guard<std::mutex> lk(cpu_mtx);
+      prev_snapshot = prev_cpu;
+    }
+    auto cur = read_cpu_times();
+    auto mem = read_meminfo();
+    auto la  = read_loadavg();
+
+    res.set_header("Access-Control-Allow-Origin", "*");
+    res.set_content(build_system_json(prev_snapshot, cur, mem, la), "application/json");
+  });
+
+  // ── Static file serving ───────────────────────────────────────────────
+  svr.set_mount_point("/", web_dir.c_str());
+
+  svr.set_error_handler([](const httplib::Request & /*req*/, httplib::Response &res) {
+    res.set_content("404 Not Found", "text/plain");
+    res.status = 404;
+  });
+
   // Start HTTP server in a separate thread
   std::thread server_thread([&]() {
-    httplib::Server svr;
-
-    // ── API: system stats ─────────────────────────────────────────────────
-    svr.Get("/api/system", [&](const httplib::Request & /*req*/, httplib::Response &res) {
-      std::vector<CpuTimes> prev_snapshot;
-      {
-        std::lock_guard<std::mutex> lk(cpu_mtx);
-        prev_snapshot = prev_cpu;
-      }
-      auto cur = read_cpu_times();
-      auto mem = read_meminfo();
-      auto la  = read_loadavg();
-
-      res.set_header("Access-Control-Allow-Origin", "*");
-      res.set_content(build_system_json(prev_snapshot, cur, mem, la), "application/json");
-    });
-
-    // ── Static file serving ───────────────────────────────────────────────
-    svr.set_mount_point("/", web_dir.c_str());
-
-    svr.set_error_handler([](const httplib::Request & /*req*/, httplib::Response &res) {
-      res.set_content("404 Not Found", "text/plain");
-      res.status = 404;
-    });
-
-    RCLCPP_INFO(node->get_logger(), "HTTP server listening on port %d", port);
-    if (!svr.listen("0.0.0.0", port)) {
-      RCLCPP_ERROR(node->get_logger(), "Failed to start HTTP server on port %d", port);
+    if (svr.bind_to_port("0.0.0.0", port)) {
+      RCLCPP_INFO(node->get_logger(), "HTTP server listening on port %d", port);
+      svr.listen_after_bind();
+    } else {
+      RCLCPP_ERROR(node->get_logger(),
+        "Failed to bind HTTP server to port %d (address already in use?)", port);
+      rclcpp::shutdown();
     }
   });
 
   rclcpp::spin(node);
 
-  sampler.join();
+  // Gracefully stop the HTTP server so it releases the port immediately
+  RCLCPP_INFO(node->get_logger(), "Shutting down HTTP server...");
+  svr.stop();
+
   server_thread.join();
+  sampler.join();
   rclcpp::shutdown();
   return 0;
 }

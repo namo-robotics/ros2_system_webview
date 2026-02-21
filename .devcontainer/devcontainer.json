@@ -1,0 +1,38 @@
+{
+    "name": "ROS2 Jazzy",
+    "build": {
+        "dockerfile": "Dockerfile",
+        "context": ".."
+    },
+    "runArgs": [
+        "--network=host"
+    ],
+    "mounts": [
+        "source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,readonly",
+        "source=${localEnv:SSH_AUTH_SOCK},target=/ssh-agent,type=bind"
+    ],
+    "containerEnv": {
+        "SSH_AUTH_SOCK": "/ssh-agent"
+    },
+    "remoteUser": "root",
+    "updateRemoteUserUID": true,
+    "portsAttributes": {
+        "9090": {
+            "onAutoForward": "ignore"
+        }
+    },
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-iros.vscode-ros",
+                "ms-vscode.cpptools",
+                "ms-python.python",
+                "ms-python.black-formatter"
+            ],
+            "settings": {
+                "terminal.integrated.defaultProfile.linux": "bash",
+                "remote.autoForwardPorts": true
+            }
+        }
+    }
+}

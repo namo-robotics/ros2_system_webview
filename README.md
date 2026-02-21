@@ -16,7 +16,7 @@ A real-time system monitoring dashboard for ROS 2. It provides a web-based UI th
 | **Live log viewer** | Subscribes to `/rosout` via [rosbridge](https://github.com/RobotWebTools/rosbridge_suite) WebSocket and streams DEBUG → FATAL messages in real time |
 | **Self-contained HTTP server** | A single C++ ROS 2 node serves both the JSON API (`/api/system`) and the static frontend on one port |
 | **Next.js + Tailwind UI** | Responsive dark-themed dashboard with 60-second rolling CPU & memory history graphs |
-| **Configurable port** | Change the HTTP port via a ROS parameter or launch argument (default `2525`) |
+| **Configurable HTTP port** | Change the HTTP port via a ROS parameter or launch argument (default `2525`). The rosbridge WebSocket port is fixed at `9090`. |
 
 ## Architecture
 
@@ -24,9 +24,9 @@ A real-time system monitoring dashboard for ROS 2. It provides a web-based UI th
 ┌─────────────────────────────────────────────────────────┐
 │  Browser (http://hostname:2525)                         │
 │  ┌───────────────┐  ┌────────────────────────────────┐  │
-│  │ System Stats   │  │ /rosout Log Viewer             │  │
-│  │ (polls /api/   │  │ (WebSocket → rosbridge :9090)  │  │
-│  │  system)       │  │                                │  │
+│  │ System Stat   │  │ /rosout Log Viewer             │  │
+│  │ (polls /api/  │  │ (WebSocket → rosbridge :9090)  │  │
+│  │  system)      │  │                                │  │
 │  └───────┬───────┘  └──────────────┬─────────────────┘  │
 └──────────┼─────────────────────────┼────────────────────┘
            │ HTTP GET                │ ws://
@@ -83,16 +83,18 @@ The included launch file starts both **rosbridge_websocket** and the **http_serv
 
 ```bash
 source ~/ros2_ws/install/setup.bash
-ros2 launch ros2_system_webview monitor.launch.py
+ros2 launch ros2_system_webview main.launch.py
 ```
 
 Then open **http://localhost:2525** in a browser.
 
-#### Changing the port
+#### Changing the HTTP port
 
 ```bash
-ros2 launch ros2_system_webview monitor.launch.py port:=8080
+ros2 launch ros2_system_webview main.launch.py http_port:=8080
 ```
+
+> **Note:** The rosbridge WebSocket port is hard-coded to `9090` because the web frontend expects this port.
 
 ### Run the node directly
 
@@ -159,7 +161,7 @@ ros2_system_webview/
 ├── package.xml                 # ROS 2 package manifest
 ├── dev.sh                      # Development helper script
 ├── launch/
-│   └── monitor.launch.py       # Launches rosbridge + http_server
+│   └── main.launch.py       # Launches rosbridge + http_server
 ├── src/
 │   └── http_server.cpp         # C++ node: API server + static file server
 └── web/                        # Next.js frontend
