@@ -27,19 +27,19 @@ A real-time system monitoring dashboard for ROS 2. It provides a web-based UI th
 ```mermaid
 flowchart TB
     subgraph Browser["Browser (http://hostname:2525)"]
-        direction TB
+        direction LR
         Stats["System Stats<br/>(polls /api/system)"]
         Logs["/rosout Log Viewer<br/>(WebSocket → rosbridge :9090)"]
     end
 
     subgraph Backend
-        direction TB
+        direction LR
         HTTP["http_server<br/>(C++ node)<br/>:2525"]
         ROS["rosbridge_server<br/>(WebSocket node)<br/>:9090"]
     end
 
     subgraph System
-        direction TB
+        direction LR
         Proc["/proc/stat<br/>/proc/meminfo<br/>/proc/loadavg"]
         Graph["ROS 2 graph"]
     end
