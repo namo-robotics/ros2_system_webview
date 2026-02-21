@@ -27,6 +27,7 @@
             ],
             "settings": {
                 "terminal.integrated.defaultProfile.linux": "bash",
+                "remote.autoForwardPorts": false
             }
         }
     }
