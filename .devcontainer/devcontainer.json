@@ -16,11 +16,7 @@
     },
     "remoteUser": "root",
     "updateRemoteUserUID": true,
-    "portsAttributes": {
-        "9090": {
-            "onAutoForward": "ignore"
-        }
-    },
+    "shutdownAction": "stopContainer",
     "customizations": {
         "vscode": {
             "extensions": [
@@ -31,7 +27,6 @@
             ],
             "settings": {
                 "terminal.integrated.defaultProfile.linux": "bash",
-                "remote.autoForwardPorts": true
             }
         }
     }
