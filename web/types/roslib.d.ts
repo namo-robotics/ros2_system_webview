@@ -10,4 +10,13 @@ declare module "roslib" {
     subscribe(callback: (message: any) => void): void;
     unsubscribe(): void;
   }
+
+  export class Service {
+    constructor(options: { ros: Ros; name: string; serviceType: string });
+    callService(request: ServiceRequest, callback: (result: any) => void, errorCallback?: (error: any) => void): void;
+  }
+
+  export class ServiceRequest {
+    constructor(values?: Record<string, any>);
+  }
 }

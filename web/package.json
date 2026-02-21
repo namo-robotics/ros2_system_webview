@@ -1,5 +1,5 @@
 {
-  "name": "ros2-system-monitor",
+  "name": "ros2-system-webview",
   "version": "0.1.0",
   "private": true,
   "scripts": {
