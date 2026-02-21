@@ -1,38 +1,45 @@
 # ros2_system_webview
 
-A real-time system monitoring dashboard for ROS 2. It provides a web-based UI that displays live CPU, memory, swap, and load average statistics alongside a scrollable `/rosout` log viewer — all served from a single ROS 2 node.
+A real-time system monitoring dashboard for ROS 2. It provides a web-based UI that displays live CPU, memory, swap, and load average statistics, a scrollable `/rosout` log viewer, and interactive node and topic browsers — all served from a single ROS 2 node.
 
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
-![ROS2 System Monitor Screenshot](assets/ros2_system_webview.png)
-
----
-
 ## Features
 
-| Feature | Details |
-|---|---|
-| **System stats API** | CPU (overall + per-core), memory, swap, load average — sampled every second from `/proc/` |
-| **Live log viewer** | Subscribes to `/rosout` via [rosbridge](https://github.com/RobotWebTools/rosbridge_suite) WebSocket and streams DEBUG → FATAL messages in real time |
-| **Self-contained HTTP server** | A single C++ ROS 2 node serves both the JSON API (`/api/system`) and the static frontend on one port |
-| **Next.js + Tailwind UI** | Responsive dark-themed dashboard with 60-second rolling CPU & memory history graphs |
-| **Configurable HTTP port** | Change the HTTP port via a ROS parameter or launch argument (default `2525`). The rosbridge WebSocket port is fixed at `9090`. |
+### Resource Monitor
+
+![ROS2 System Webview Screenshot](assets/resource_monitor.png)
+
+### Log Viewer
+
+![Log Viewer](assets/log_viewer.png)
+
+### Node Viewer
+
+![Node Viewer](assets/nodes.png)
+
+### Topic Viewer
+
+![Topic Viewer](assets/topics.png)
 
 ## Architecture
 
 ```mermaid
 flowchart TB
     subgraph Browser["Browser (http://hostname:2525)"]
+        direction TB
         Stats["System Stats<br/>(polls /api/system)"]
         Logs["/rosout Log Viewer<br/>(WebSocket → rosbridge :9090)"]
     end
 
     subgraph Backend
+        direction TB
         HTTP["http_server<br/>(C++ node)<br/>:2525"]
         ROS["rosbridge_server<br/>(WebSocket node)<br/>:9090"]
     end
 
     subgraph System
+        direction TB
         Proc["/proc/stat<br/>/proc/meminfo<br/>/proc/loadavg"]
         Graph["ROS 2 graph"]
     end
@@ -70,7 +77,7 @@ git clone https://github.com/namo-robotics/ros2_system_webview.git
 
 cd ~/ros2_ws
 source /opt/ros/${ROS_DISTRO}/setup.bash
-colcon build --packages-select ros2_system_webview
+colcon build
 source install/setup.bash
 ```
 
@@ -78,16 +85,15 @@ The build automatically runs `npm install && npm run build` inside the `web/` di
 
 ## Usage
 
-### Launch (recommended)
+### Launch
 
-The included launch file starts both **rosbridge_websocket** and the **http_server** node:
+The included launch file starts two nodes: **rosbridge_websocket** and the **http_server**:
 
 ```bash
-source ~/ros2_ws/install/setup.bash
 ros2 launch ros2_system_webview main.launch.py
 ```
 
-Then open **http://localhost:2525** in a browser.
+Then open **<http://localhost:2525>** in a browser.
 
 #### Changing the HTTP port
 
@@ -97,12 +103,15 @@ ros2 launch ros2_system_webview main.launch.py http_port:=8080
 
 > **Note:** The rosbridge WebSocket port is hard-coded to `9090` because the web frontend expects this port.
 
-### Run the node directly
+### Building the Web-App
 
-If you already have rosbridge running separately:
+The compiled webapp files are committed directly into the repo so that the ros2 package can be built without
+dependencies on npm or javascript packages.
+
+To compile the web app and build the full ros2 package, run:
 
 ```bash
-ros2 run ros2_system_webview http_server --ros-args -p port:=2525
+./build.sh
 ```
 
 ### Development mode
@@ -120,91 +129,13 @@ source install/setup.bash
 # → rosbridge: ws://localhost:9090
 ```
 
-## API Reference
-
-### `GET /api/system`
-
-Returns a JSON object with current system statistics:
-
-```json
-{
-  "cpu_percent": 12.3,
-  "cores": [
-    { "name": "cpu0", "percent": 8.1 },
-    { "name": "cpu1", "percent": 16.5 }
-  ],
-  "memory": {
-    "total_mb": 16384.0,
-    "used_mb": 8192.0,
-    "free_mb": 8192.0,
-    "buffers_mb": 256.0,
-    "cached_mb": 4096.0,
-    "percent": 50.0
-  },
-  "swap": {
-    "total_mb": 8192.0,
-    "used_mb": 0.0,
-    "percent": 0.0
-  },
-  "load_avg": {
-    "one": 0.5,
-    "five": 0.3,
-    "fifteen": 0.2
-  }
-}
-```
-
-## Project Structure
-
-```
-ros2_system_webview/
-├── CMakeLists.txt              # ament_cmake build + frontend build
-├── package.xml                 # ROS 2 package manifest
-├── dev.sh                      # Development helper script
-├── launch/
-│   └── main.launch.py       # Launches rosbridge + http_server
-├── src/
-│   └── http_server.cpp         # C++ node: API server + static file server
-└── web/                        # Next.js frontend
-    ├── app/
-    │   ├── layout.tsx
-    │   └── page.tsx            # Dashboard page
-    ├── components/
-    │   ├── ConnectionBadge.tsx  # rosbridge connection indicator
-    │   ├── LogViewer.tsx        # /rosout log table
-    │   ├── NodeSection.tsx      # Per-node log grouping
-    │   └── SystemStatsPanel.tsx # CPU / memory / swap / load cards
-    ├── hooks/
-    │   ├── useRos.ts           # rosbridge WebSocket + /rosout subscription
-    │   └── useSystemStats.ts   # Polls /api/system every second
-    └── types/
-        ├── ros.ts              # ROS message types
-        └── system.ts           # System stats types
-```
-
-## ROS 2 Interfaces
-
-### Parameters
-
-| Node | Parameter | Type | Default | Description |
-|---|---|---|---|---|
-| `static_http_server` | `port` | `int` | `2525` | HTTP server listen port |
-
-### Topics subscribed (via rosbridge in the browser)
-
-| Topic | Type | Purpose |
-|---|---|---|
-| `/rosout` | `rcl_interfaces/msg/Log` | Aggregated log messages from all nodes |
-
-### Dependencies
+## Dependencies
 
 | Package | Purpose |
 |---|---|
 | `rclcpp` | ROS 2 C++ client library |
 | `rosbridge_server` | WebSocket bridge for the browser |
 | `libcpp-httplib-dev` | Header-only C++ HTTP server library |
-
----
 
 ## License
 

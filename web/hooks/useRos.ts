@@ -143,5 +143,32 @@ export function useRos({ url = "ws://localhost:9090" }: UseRosOptions = {}) {
     };
   }, [url, fetchNodes, fetchTopics]);
 
-  return { status, logs, clearLogs, nodes, topics, refreshGraph };
+  const echoOnce = useCallback((topicName: string, topicType: string): Promise<unknown> => {
+    return new Promise((resolve, reject) => {
+      const ros = rosRef.current;
+      if (!ros) {
+        reject(new Error("Not connected to ROS"));
+        return;
+      }
+
+      const topic = new ROSLIB.Topic({
+        ros,
+        name: topicName,
+        messageType: topicType,
+      });
+
+      const timeout = setTimeout(() => {
+        topic.unsubscribe();
+        reject(new Error("Timeout waiting for message"));
+      }, 5000);
+
+      topic.subscribe((message: unknown) => {
+        clearTimeout(timeout);
+        topic.unsubscribe();
+        resolve(message);
+      });
+    });
+  }, []);
+
+  return { status, logs, clearLogs, nodes, topics, refreshGraph, echoOnce };
 }

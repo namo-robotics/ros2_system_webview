@@ -23,7 +23,8 @@
                 "ms-iros.vscode-ros",
                 "ms-vscode.cpptools",
                 "ms-python.python",
-                "ms-python.black-formatter"
+                "ms-python.black-formatter",
+                "MermaidChart.vscode-mermaid-chart"
             ],
             "settings": {
                 "terminal.integrated.defaultProfile.linux": "bash",
