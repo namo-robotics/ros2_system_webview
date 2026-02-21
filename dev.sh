@@ -17,9 +17,6 @@ else
   exit 1
 fi
 
-# Remove stale static export dir so it doesn't confuse the dev server
-rm -rf "$WEB_DIR/out"
-
 cleanup() {
   echo ""
   echo "Shutting down…"
