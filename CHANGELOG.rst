@@ -1,6 +1,6 @@
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Changelog for package ros2_system_webview
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Changelog for package system_webview
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Forthcoming
 -----------
@@ -24,6 +24,6 @@ Forthcoming
   - Defined ROS-related types in ros.ts for log messages and connection statuses.
   - Created roslib.d.ts for type definitions of the roslib library.
   - Implemented system.ts to define interfaces for system statistics and resource usage.
-* Initial commit: Add basic structure for ros2_system_webview with HTTP server and web interface
+* Initial commit: Add basic structure for system_webview with HTTP server and web interface
 * Initial commit
 * Contributors: David Brown

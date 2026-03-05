@@ -1,4 +1,4 @@
-# ros2_system_webview
+# system_webview
 
 A real-time system monitoring dashboard for ROS 2. It provides a web-based UI that displays live CPU, memory, swap, and load average statistics, a scrollable `/rosout` log viewer, and interactive node and topic browsers — all served from a single ROS 2 node.
 
@@ -81,7 +81,7 @@ colcon build
 source install/setup.bash
 ```
 
-The build automatically runs `npm install && npm run build` inside the `web/` directory and installs the static export to `share/ros2_system_webview/web`.
+The build automatically runs `npm install && npm run build` inside the `web/` directory and installs the static export to `share/system_webview/web`.
 
 ## Usage
 
@@ -90,7 +90,7 @@ The build automatically runs `npm install && npm run build` inside the `web/` di
 The included launch file starts two nodes: **rosbridge_websocket** and the **http_server**:
 
 ```bash
-ros2 launch ros2_system_webview main.launch.py
+ros2 launch system_webview main.launch.py
 ```
 
 Then open **<http://localhost:2525>** in a browser.
@@ -98,7 +98,7 @@ Then open **<http://localhost:2525>** in a browser.
 #### Changing the HTTP port
 
 ```bash
-ros2 launch ros2_system_webview main.launch.py http_port:=8080
+ros2 launch system_webview main.launch.py http_port:=8080
 ```
 
 > **Note:** The rosbridge WebSocket port is hard-coded to `9090` because the web frontend expects this port.
@@ -120,7 +120,7 @@ A helper script runs the Next.js dev server (with hot-reload on port 3000), the 
 
 ```bash
 # Build once first
-colcon build --packages-select ros2_system_webview
+colcon build --packages-select system_webview
 source install/setup.bash
 
 ./dev.sh

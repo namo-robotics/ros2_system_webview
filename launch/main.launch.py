@@ -23,7 +23,7 @@ def generate_launch_description():
     )
 
     http_server = Node(
-        package="ros2_system_webview",
+        package="system_webview",
         executable="http_server",
         name="http_server",
         output="screen",

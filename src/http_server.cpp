@@ -153,7 +153,7 @@ int main(int argc, char **argv) {
 
   // Get the path to the installed web directory
   std::string web_dir =
-      ament_index_cpp::get_package_share_directory("ros2_system_webview") + "/web";
+      ament_index_cpp::get_package_share_directory("system_webview") + "/web";
 
   if (!std::filesystem::exists(web_dir)) {
     RCLCPP_ERROR(node->get_logger(), "Web directory not found: %s", web_dir.c_str());

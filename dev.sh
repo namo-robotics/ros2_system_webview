@@ -36,6 +36,6 @@ npm run dev &
 
 # 3) C++ HTTP server for /api/system (needs a colcon build + source)
 echo "▶ Starting http_server on http://localhost:2525 (system stats API)"
-ros2 run ros2_system_webview http_server &
+ros2 run system_webview http_server &
 
 wait
