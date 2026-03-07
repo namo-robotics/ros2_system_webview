@@ -26,11 +26,8 @@ target_include_directories(http_server PRIVATE
 
 target_link_libraries(http_server
   ${HTTPLIB_LIBRARIES}
-)
-
-ament_target_dependencies(http_server
-  rclcpp
-  ament_index_cpp
+  rclcpp::rclcpp
+  ament_index_cpp::ament_index_cpp
 )
 
 install(TARGETS
