@@ -2,8 +2,8 @@
 Changelog for package system_webview
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.0.1 (2026-03-07)
+------------------
 * feat: update styles and build manifests for improved UI and performance
   - Added new Tailwind CSS file for styling enhancements.
   - Created new build manifest and SSG manifest files for better routing and static generation.
