@@ -4,6 +4,7 @@ SHELL ["/bin/bash", "-c"]
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y \
+    ros-dev-tools \
     python3-pip \
     python3-colcon-common-extensions \
     git \
