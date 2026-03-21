@@ -102,13 +102,317 @@ static LoadAvg read_loadavg()
   return la;
 }
 
+// Network interface stats from /proc/net/dev
+struct NetIfaceStats
+{
+  std::string name;
+  uint64_t rx_bytes = 0;
+  uint64_t tx_bytes = 0;
+  int64_t speed_mbps = -1;  // Link speed in Mbps, -1 if unknown
+};
+
+static std::vector<NetIfaceStats> read_net_stats()
+{
+  std::vector<NetIfaceStats> result;
+  std::ifstream f("/proc/net/dev");
+  std::string line;
+  // Skip header lines
+  std::getline(f, line);
+  std::getline(f, line);
+
+  while (std::getline(f, line)) {
+    // Format: "  iface: rx_bytes rx_packets ... tx_bytes tx_packets ..."
+    auto colon = line.find(':');
+    if (colon == std::string::npos) {continue;}
+
+    NetIfaceStats ns;
+    ns.name = line.substr(0, colon);
+    // Trim whitespace from name
+    ns.name.erase(0, ns.name.find_first_not_of(" \t"));
+    ns.name.erase(ns.name.find_last_not_of(" \t") + 1);
+
+    std::istringstream ss(line.substr(colon + 1));
+    uint64_t rx_packets, rx_errs, rx_drop, rx_fifo, rx_frame, rx_compressed, rx_multicast;
+    uint64_t tx_packets, tx_errs, tx_drop, tx_fifo, tx_colls, tx_carrier, tx_compressed;
+    ss >> ns.rx_bytes >> rx_packets >> rx_errs >> rx_drop >> rx_fifo >> rx_frame >>
+      rx_compressed >> rx_multicast;
+    ss >> ns.tx_bytes >> tx_packets >> tx_errs >> tx_drop >> tx_fifo >> tx_colls >>
+      tx_carrier >> tx_compressed;
+
+    // Skip loopback
+    if (ns.name != "lo") {
+      // Read link speed from sysfs (returns Mbps, or -1 if not available)
+      std::string speed_path = "/sys/class/net/" + ns.name + "/speed";
+      std::ifstream speed_file(speed_path);
+      if (speed_file.is_open()) {
+        int64_t speed;
+        if (speed_file >> speed && speed > 0) {
+          ns.speed_mbps = speed;
+        }
+      }
+      result.push_back(ns);
+    }
+  }
+  return result;
+}
+
+// USB bus/controller info from /sys/bus/usb/devices/usbN
+struct UsbBusStats
+{
+  int bus_num = 0;              // Bus number (1, 2, 3, ...)
+  uint64_t speed_mbps = 0;      // Max bus speed in Mbps
+  std::string version;          // USB version ("1.1", "2.0", "3.0", etc.)
+  std::string controller;       // Controller name/type
+  uint64_t device_count = 0;    // Number of devices on this bus
+  uint64_t claimed_bw_mbps = 0; // Total claimed bandwidth by devices
+};
+
+// USB device info from /sys/bus/usb/devices
+struct UsbDeviceStats
+{
+  std::string bus_port;     // e.g., "1-2"
+  int bus_num = 0;          // Bus number this device is on
+  std::string product;
+  std::string manufacturer;
+  uint64_t speed_mbps = 0;  // USB speed in Mbps
+  std::string dev_class;    // Device class (e.g., "Video", "Mass Storage")
+  // I/O stats (if it's a storage device)
+  bool is_storage = false;
+  std::string block_dev;    // e.g., "sda"
+  uint64_t read_bytes = 0;
+  uint64_t write_bytes = 0;
+};
+
+// Helper to read a sysfs attribute file
+static std::string read_sysfs_attr(const std::string & path)
+{
+  std::ifstream f(path);
+  if (!f.is_open()) {return "";}
+  std::string val;
+  std::getline(f, val);
+  // Trim trailing whitespace/newlines
+  while (!val.empty() && (val.back() == '\n' || val.back() == '\r' || val.back() == ' ')) {
+    val.pop_back();
+  }
+  return val;
+}
+
+// Read block device I/O stats from /sys/block/<dev>/stat
+// Format: reads_completed reads_merged sectors_read ms_reading writes_completed ...
+static std::pair<uint64_t, uint64_t> read_block_io(const std::string & block_dev)
+{
+  std::string path = "/sys/block/" + block_dev + "/stat";
+  std::ifstream f(path);
+  if (!f.is_open()) {return {0, 0};}
+
+  uint64_t reads_completed, reads_merged, sectors_read, ms_reading;
+  uint64_t writes_completed, writes_merged, sectors_written;
+  f >> reads_completed >> reads_merged >> sectors_read >> ms_reading;
+  f >> writes_completed >> writes_merged >> sectors_written;
+
+  // Sectors are typically 512 bytes
+  return {sectors_read * 512, sectors_written * 512};
+}
+
+// Check if a block device is USB-attached by checking its device symlink
+static std::string find_usb_block_device(const std::string & usb_path)
+{
+  // Look for block devices under this USB device
+  namespace fs = std::filesystem;
+  try {
+    for (const auto & entry : fs::recursive_directory_iterator(usb_path)) {
+      if (entry.is_directory() && entry.path().filename().string().rfind("block", 0) == 0) {
+        // Found a block directory, check for actual device
+        for (const auto & block_entry : fs::directory_iterator(entry.path())) {
+          if (block_entry.is_directory()) {
+            return block_entry.path().filename().string();
+          }
+        }
+      }
+    }
+  } catch (...) {
+    // Ignore errors from permission issues
+  }
+  return "";
+}
+
+// Map USB class codes to human-readable names
+static std::string get_usb_class_name(const std::string & class_code)
+{
+  if (class_code.empty() || class_code.length() < 2) {return "";}
+  // Class code is in format "xx/yy/zz" or just "xx"
+  std::string base_class = class_code.substr(0, 2);
+  if (base_class == "01") {return "Audio";}
+  if (base_class == "02") {return "Network";}
+  if (base_class == "03") {return "HID";}
+  if (base_class == "06") {return "Imaging";}
+  if (base_class == "07") {return "Printer";}
+  if (base_class == "08") {return "Storage";}
+  if (base_class == "09") {return "Hub";}
+  if (base_class == "0e") {return "Video";}
+  if (base_class == "10") {return "Audio/Video";}
+  if (base_class == "e0") {return "Wireless";}
+  if (base_class == "ef") {return "Misc";}
+  if (base_class == "ff") {return "Vendor";}
+  return "";
+}
+
+// Get USB version string from speed
+static std::string get_usb_version(uint64_t speed_mbps)
+{
+  if (speed_mbps >= 20000) {return "3.2";}
+  if (speed_mbps >= 10000) {return "3.1";}
+  if (speed_mbps >= 5000) {return "3.0";}
+  if (speed_mbps >= 480) {return "2.0";}
+  if (speed_mbps >= 12) {return "1.1";}
+  return "1.0";
+}
+
+static std::vector<UsbBusStats> read_usb_bus_stats()
+{
+  std::vector<UsbBusStats> result;
+  namespace fs = std::filesystem;
+  const std::string usb_path = "/sys/bus/usb/devices";
+
+  if (!fs::exists(usb_path)) {return result;}
+
+  try {
+    for (const auto & entry : fs::directory_iterator(usb_path)) {
+      std::string name = entry.path().filename().string();
+      // Only look at root hubs (names like "usb1", "usb2", etc.)
+      if (name.rfind("usb", 0) != 0) {continue;}
+
+      UsbBusStats bus;
+      try {
+        bus.bus_num = std::stoi(name.substr(3));
+      } catch (...) {continue;}
+
+      // Read bus speed
+      std::string speed_str = read_sysfs_attr(entry.path().string() + "/speed");
+      if (!speed_str.empty()) {
+        try {
+          bus.speed_mbps = std::stoull(speed_str);
+        } catch (...) {}
+      }
+
+      bus.version = get_usb_version(bus.speed_mbps);
+
+      // Try to get controller info from product name
+      bus.controller = read_sysfs_attr(entry.path().string() + "/product");
+      if (bus.controller.empty()) {
+        bus.controller = "USB " + bus.version + " Controller";
+      }
+
+      result.push_back(bus);
+    }
+  } catch (...) {
+    // Ignore filesystem errors
+  }
+
+  // Sort by bus number
+  std::sort(result.begin(), result.end(),
+    [](const UsbBusStats & a, const UsbBusStats & b) { return a.bus_num < b.bus_num; });
+
+  return result;
+}
+
+static std::vector<UsbDeviceStats> read_usb_stats(std::vector<UsbBusStats> & buses)
+{
+  std::vector<UsbDeviceStats> result;
+  namespace fs = std::filesystem;
+  const std::string usb_path = "/sys/bus/usb/devices";
+
+  // Reset device counts and claimed bandwidth
+  for (auto & bus : buses) {
+    bus.device_count = 0;
+    bus.claimed_bw_mbps = 0;
+  }
+
+  if (!fs::exists(usb_path)) {return result;}
+
+  try {
+    for (const auto & entry : fs::directory_iterator(usb_path)) {
+      std::string name = entry.path().filename().string();
+      // Skip USB hubs (names like "usb1") and interfaces (names containing ":")
+      if (name.rfind("usb", 0) == 0 || name.find(':') != std::string::npos) {
+        continue;
+      }
+
+      UsbDeviceStats dev;
+      dev.bus_port = name;
+
+      // Extract bus number from device name (e.g., "1-2" -> bus 1)
+      auto dash_pos = name.find('-');
+      if (dash_pos != std::string::npos) {
+        try {
+          dev.bus_num = std::stoi(name.substr(0, dash_pos));
+        } catch (...) {}
+      }
+
+      dev.product = read_sysfs_attr(entry.path().string() + "/product");
+      dev.manufacturer = read_sysfs_attr(entry.path().string() + "/manufacturer");
+      std::string speed_str = read_sysfs_attr(entry.path().string() + "/speed");
+      if (!speed_str.empty()) {
+        try {
+          dev.speed_mbps = std::stoull(speed_str);
+        } catch (...) {}
+      }
+
+      // Read device class
+      std::string class_str = read_sysfs_attr(entry.path().string() + "/bDeviceClass");
+      if (class_str == "00") {
+        // Class defined at interface level, check first interface
+        std::string iface_class = read_sysfs_attr(entry.path().string() + "/" + name + ":1.0/bInterfaceClass");
+        dev.dev_class = get_usb_class_name(iface_class);
+      } else {
+        dev.dev_class = get_usb_class_name(class_str);
+      }
+
+      // Skip devices without product name (usually internal hubs)
+      if (dev.product.empty()) {continue;}
+
+      // Check if this USB device has a block device (storage)
+      std::string block_dev = find_usb_block_device(entry.path().string());
+      if (!block_dev.empty()) {
+        dev.is_storage = true;
+        dev.block_dev = block_dev;
+        if (dev.dev_class.empty()) {dev.dev_class = "Storage";}
+        auto [rb, wb] = read_block_io(block_dev);
+        dev.read_bytes = rb;
+        dev.write_bytes = wb;
+      }
+
+      // Update bus statistics
+      for (auto & bus : buses) {
+        if (bus.bus_num == dev.bus_num) {
+          bus.device_count++;
+          bus.claimed_bw_mbps += dev.speed_mbps;
+          break;
+        }
+      }
+
+      result.push_back(dev);
+    }
+  } catch (...) {
+    // Ignore filesystem errors
+  }
+
+  return result;
+}
+
 // Build the JSON response
 // prev_cpu is the *previous* sample so we can compute a delta-based percentage.
 static std::string build_system_json(
   const std::vector<CpuTimes> & prev,
   const std::vector<CpuTimes> & cur,
   const MemInfo & mem,
-  const LoadAvg & la)
+  const LoadAvg & la,
+  const std::vector<NetIfaceStats> & prev_net,
+  const std::vector<NetIfaceStats> & cur_net,
+  const std::vector<UsbBusStats> & usb_buses,
+  const std::vector<UsbDeviceStats> & prev_usb,
+  const std::vector<UsbDeviceStats> & cur_usb,
+  double sample_interval_sec)
 {
   auto pct = [](const CpuTimes & a, const CpuTimes & b) -> double {
       auto dt = b.total() - a.total();
@@ -163,7 +467,104 @@ static std::string build_system_json(
   // load average
   js << "\"load_avg\":{\"one\":" << la.one
      << ",\"five\":" << la.five
-     << ",\"fifteen\":" << la.fifteen << "}";
+     << ",\"fifteen\":" << la.fifteen << "},";
+
+  // Network interfaces with bandwidth
+  js << "\"network\":[";
+  for (size_t i = 0; i < cur_net.size(); ++i) {
+    if (i > 0) {js << ",";}
+    const auto & cur_if = cur_net[i];
+    // Find matching previous stats
+    double rx_bps = 0.0, tx_bps = 0.0;
+    for (const auto & prev_if : prev_net) {
+      if (prev_if.name == cur_if.name) {
+        // Calculate bytes per second
+        uint64_t rx_delta = (cur_if.rx_bytes >= prev_if.rx_bytes) ?
+          (cur_if.rx_bytes - prev_if.rx_bytes) : 0;
+        uint64_t tx_delta = (cur_if.tx_bytes >= prev_if.tx_bytes) ?
+          (cur_if.tx_bytes - prev_if.tx_bytes) : 0;
+        rx_bps = static_cast<double>(rx_delta) / sample_interval_sec;
+        tx_bps = static_cast<double>(tx_delta) / sample_interval_sec;
+        break;
+      }
+    }
+    js << "{\"name\":\"" << cur_if.name << "\","
+       << "\"rx_bytes\":" << cur_if.rx_bytes << ","
+       << "\"tx_bytes\":" << cur_if.tx_bytes << ","
+       << "\"rx_bytes_per_sec\":" << rx_bps << ","
+       << "\"tx_bytes_per_sec\":" << tx_bps << ","
+       << "\"speed_mbps\":" << cur_if.speed_mbps << "}";
+  }
+  js << "],";
+
+  // USB devices with I/O stats
+  js << "\"usb\":[";
+  for (size_t i = 0; i < cur_usb.size(); ++i) {
+    if (i > 0) {js << ",";}
+    const auto & cur_dev = cur_usb[i];
+    double read_bps = 0.0, write_bps = 0.0;
+    // Calculate bandwidth for storage devices
+    if (cur_dev.is_storage) {
+      for (const auto & prev_dev : prev_usb) {
+        if (prev_dev.bus_port == cur_dev.bus_port && prev_dev.is_storage) {
+          uint64_t rd = (cur_dev.read_bytes >= prev_dev.read_bytes) ?
+            (cur_dev.read_bytes - prev_dev.read_bytes) : 0;
+          uint64_t wd = (cur_dev.write_bytes >= prev_dev.write_bytes) ?
+            (cur_dev.write_bytes - prev_dev.write_bytes) : 0;
+          read_bps = static_cast<double>(rd) / sample_interval_sec;
+          write_bps = static_cast<double>(wd) / sample_interval_sec;
+          break;
+        }
+      }
+    }
+    // Escape JSON strings
+    auto escape_json = [](const std::string & s) {
+        std::string result;
+        for (char c : s) {
+          if (c == '"') {result += "\\\"";} else if (c == '\\') {
+            result += "\\\\";
+          } else if (c < 32) {result += ' ';} else {result += c;}
+        }
+        return result;
+      };
+    js << "{\"bus_port\":\"" << cur_dev.bus_port << "\","
+       << "\"bus_num\":" << cur_dev.bus_num << ","
+       << "\"product\":\"" << escape_json(cur_dev.product) << "\","
+       << "\"manufacturer\":\"" << escape_json(cur_dev.manufacturer) << "\","
+       << "\"speed_mbps\":" << cur_dev.speed_mbps << ","
+       << "\"dev_class\":\"" << escape_json(cur_dev.dev_class) << "\","
+       << "\"is_storage\":" << (cur_dev.is_storage ? "true" : "false") << ","
+       << "\"block_dev\":\"" << cur_dev.block_dev << "\","
+       << "\"read_bytes\":" << cur_dev.read_bytes << ","
+       << "\"write_bytes\":" << cur_dev.write_bytes << ","
+       << "\"read_bytes_per_sec\":" << read_bps << ","
+       << "\"write_bytes_per_sec\":" << write_bps << "}";
+  }
+  js << "],";
+
+  // USB bus/controller stats
+  js << "\"usb_buses\":[";
+  for (size_t i = 0; i < usb_buses.size(); ++i) {
+    if (i > 0) {js << ",";}
+    const auto & bus = usb_buses[i];
+    // Escape JSON strings
+    auto escape_json = [](const std::string & s) {
+        std::string result;
+        for (char c : s) {
+          if (c == '"') {result += "\\\"";} else if (c == '\\') {
+            result += "\\\\";
+          } else if (c < 32) {result += ' ';} else {result += c;}
+        }
+        return result;
+      };
+    js << "{\"bus_num\":" << bus.bus_num << ","
+       << "\"speed_mbps\":" << bus.speed_mbps << ","
+       << "\"version\":\"" << bus.version << "\","
+       << "\"controller\":\"" << escape_json(bus.controller) << "\","
+       << "\"device_count\":" << bus.device_count << ","
+       << "\"claimed_bw_mbps\":" << bus.claimed_bw_mbps << "}";
+  }
+  js << "]";
 
   js << "}";
   return js.str();
@@ -189,16 +590,24 @@ int main(int argc, char ** argv)
 
   // Shared CPU sample (protected by mutex) - background thread updates it once
   // per second so the API response contains a delta-based CPU percentage.
-  std::mutex cpu_mtx;
+  std::mutex stats_mtx;
   std::vector<CpuTimes> prev_cpu = read_cpu_times();
+  std::vector<NetIfaceStats> prev_net = read_net_stats();
+  std::vector<UsbBusStats> init_buses = read_usb_bus_stats();
+  std::vector<UsbDeviceStats> prev_usb = read_usb_stats(init_buses);
 
   std::thread sampler([&]() {
       while (rclcpp::ok()) {
         std::this_thread::sleep_for(std::chrono::seconds(1));
-        auto snapshot = read_cpu_times();
+        auto cpu_snapshot = read_cpu_times();
+        auto net_snapshot = read_net_stats();
+        auto bus_snapshot = read_usb_bus_stats();
+        auto usb_snapshot = read_usb_stats(bus_snapshot);
         {
-          std::lock_guard<std::mutex> lk(cpu_mtx);
-          prev_cpu = snapshot;
+          std::lock_guard<std::mutex> lk(stats_mtx);
+          prev_cpu = cpu_snapshot;
+          prev_net = net_snapshot;
+          prev_usb = usb_snapshot;
         }
       }
     });
@@ -208,17 +617,31 @@ int main(int argc, char ** argv)
 
   // API: system stats
   svr.Get("/api/system", [&](const httplib::Request & /*req*/, httplib::Response & res) {
-      std::vector<CpuTimes> prev_snapshot;
+      std::vector<CpuTimes> prev_cpu_snapshot;
+      std::vector<NetIfaceStats> prev_net_snapshot;
+      std::vector<UsbDeviceStats> prev_usb_snapshot;
       {
-        std::lock_guard<std::mutex> lk(cpu_mtx);
-        prev_snapshot = prev_cpu;
+        std::lock_guard<std::mutex> lk(stats_mtx);
+        prev_cpu_snapshot = prev_cpu;
+        prev_net_snapshot = prev_net;
+        prev_usb_snapshot = prev_usb;
       }
-      auto cur = read_cpu_times();
+      auto cur_cpu = read_cpu_times();
+      auto cur_net = read_net_stats();
+      auto usb_buses = read_usb_bus_stats();
+      auto cur_usb = read_usb_stats(usb_buses);
       auto mem = read_meminfo();
       auto la = read_loadavg();
 
       res.set_header("Access-Control-Allow-Origin", "*");
-      res.set_content(build_system_json(prev_snapshot, cur, mem, la), "application/json");
+      res.set_content(
+        build_system_json(
+          prev_cpu_snapshot, cur_cpu, mem, la,
+          prev_net_snapshot, cur_net,
+          usb_buses,
+          prev_usb_snapshot, cur_usb,
+          1.0),   // sample interval in seconds
+        "application/json");
     });
 
   // Static file serving

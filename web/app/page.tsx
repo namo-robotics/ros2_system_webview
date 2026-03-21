@@ -52,7 +52,7 @@ const TABS: Tab[] = [
 export default function Home() {
   const [activeTab, setActiveTab] = useState("resources");
   const { status, logs, clearLogs, nodes, topics, echoOnce } = useRos();
-  const { stats, cpuHistory, memHistory, error: statsError } = useSystemStats();
+  const { stats, cpuHistory, memHistory, netHistory, usbHistory, error: statsError } = useSystemStats();
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
@@ -79,6 +79,8 @@ export default function Home() {
             stats={stats}
             cpuHistory={cpuHistory}
             memHistory={memHistory}
+            netHistory={netHistory}
+            usbHistory={usbHistory}
             error={statsError}
           />
         )}
