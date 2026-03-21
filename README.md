@@ -24,7 +24,7 @@ A real-time system monitoring dashboard for ROS 2. It provides a web-based UI th
 
 ## Enabling Real-Time USB Monitoring
 
-By default, the dashboard shows *claimed* USB bandwidth based on device speeds. For **actual** real-time USB traffic monitoring (useful for detecting camera saturation), enable usbmon:
+By default, the dashboard shows _claimed_ USB bandwidth based on device speeds. For **actual** real-time USB traffic monitoring (useful for detecting camera saturation), enable usbmon:
 
 ```bash
 # Load the usbmon kernel module
@@ -150,10 +150,10 @@ source install/setup.bash
 
 ## Dependencies
 
-| Package | Purpose |
-|---|---|
-| `rclcpp` | ROS 2 C++ client library |
-| `rosbridge_server` | WebSocket bridge for the browser |
+| Package              | Purpose                             |
+| -------------------- | ----------------------------------- |
+| `rclcpp`             | ROS 2 C++ client library            |
+| `rosbridge_server`   | WebSocket bridge for the browser    |
 | `libcpp-httplib-dev` | Header-only C++ HTTP server library |
 
 ## License

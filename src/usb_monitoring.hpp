@@ -30,10 +30,10 @@ struct UsbBusStats
   std::string version;          // USB version ("1.1", "2.0", "3.0", etc.)
   std::string controller;       // Controller name/type
   uint64_t device_count = 0;    // Number of devices on this bus
-  uint64_t claimed_bw_mbps = 0; // Total claimed bandwidth by devices
+  uint64_t claimed_bw_mbps = 0;  // Total claimed bandwidth by devices
   // Real-time traffic from usbmon (if available)
   uint64_t actual_bytes = 0;       // Total bytes transferred on this bus
-  double actual_bytes_per_sec = 0; // Real-time bandwidth usage
+  double actual_bytes_per_sec = 0;  // Real-time bandwidth usage
   bool usbmon_available = false;   // Whether usbmon data is available for this bus
 };
 

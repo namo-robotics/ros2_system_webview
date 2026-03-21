@@ -1,0 +1,119 @@
+# Pre-commit configuration for ROS 2 repositories
+# Inspired by nav2, moveit2, and generate_parameter_library best practices
+#
+# Install pre-commit: pip install pre-commit
+# Install hooks:      pre-commit install
+# Run manually:       pre-commit run -a
+# Update hook revs:   pre-commit autoupdate
+
+exclude: ^(build|install|log|node_modules|web/out|web/node_modules|web/\.next)/
+
+repos:
+  # ──────────────────────────────────────────────
+  # General / filesystem hygiene
+  # ──────────────────────────────────────────────
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-merge-conflict # catch leftover merge conflict markers
+      - id: check-symlinks # detect broken symlinks
+      - id: detect-private-key # prevent committing private keys
+      - id: end-of-file-fixer # ensure newline at end of file
+      - id: fix-byte-order-marker # remove UTF-8 BOM
+      - id: mixed-line-ending # normalise CRLF → LF
+        args: ["--fix=lf"]
+      - id: trailing-whitespace # strip trailing whitespace
+        args: ["--markdown-linebreak-ext=md"]
+
+  # ──────────────────────────────────────────────
+  # ament_* hooks  (all grouped under a single repo: local block)
+  #
+  # Why local + language: system?
+  #   ament_* tools are installed by ROS 2 / rosdep into your system or
+  #   overlay environment — they are NOT published on PyPI or any pre-commit
+  #   hook registry, so pre-commit cannot download or isolate them itself.
+  #   `language: system` tells pre-commit to call whatever binary is already
+  #   on your PATH instead of creating its own virtualenv.
+  #
+  #   ➜  You must have your ROS 2 environment sourced before running:
+  #        source /opt/ros/$ROS_DISTRO/setup.bash
+  #      or skip ament hooks temporarily with:
+  #        SKIP=ament_cppcheck,ament_cpplint pre-commit run -a
+  # ──────────────────────────────────────────────
+  - repo: local
+    hooks:
+      # C / C++ — formatting (matches colcon test's uncrustify)
+      - id: ament_uncrustify
+        name: ament_uncrustify
+        description: Format C/C++ files with uncrustify.
+        entry: ament_uncrustify
+        language: system
+        files: \.(h\+\+|h|hh|hxx|hpp|cuh|c|cc|cpp|cu|c\+\+|cxx|tpp|txx)$
+        args: ["--reformat"]
+
+      # C / C++ — static analysis
+      - id: ament_cppcheck
+        name: ament_cppcheck
+        description: Static analysis of C/C++ files.
+        entry: env AMENT_CPPCHECK_ALLOW_SLOW_VERSIONS=1 ament_cppcheck
+        language: system
+        files: \.(h\+\+|h|hh|hxx|hpp|cuh|c|cc|cpp|cu|c\+\+|cxx|tpp|txx)$
+        exclude: (^|/)test/ # cppcheck can't parse gtest macros without include paths
+        args: ["--"]
+
+      # C / C++ — Google style lint
+      - id: ament_cpplint
+        name: ament_cpplint
+        description: Google style lint for C/C++ files.
+        entry: ament_cpplint
+        language: system
+        files: \.(h\+\+|h|hh|hxx|hpp|cuh|c|cc|cpp|cu|c\+\+|cxx|tpp|txx)$
+        args:
+          [
+            "--linelength=100",
+            "--filter=-whitespace/newline,-build/include_order,-legal/copyright,-whitespace/comments,-whitespace/blank_line,-build/header_guard",
+            "--root=src",
+          ]
+
+      # CMake — formatting
+      - id: ament_lint_cmake
+        name: ament_lint_cmake
+        description: Check formatting of CMakeLists.txt files.
+        entry: ament_lint_cmake
+        language: system
+        files: (CMakeLists\.txt|\.cmake)$
+
+      # XML / URDF / SDF / xacro / package.xml — well-formedness
+      - id: ament_xmllint
+        name: ament_xmllint
+        description: Lint XML files (package.xml, URDF, SDF, launch XML).
+        entry: ament_xmllint
+        language: system
+        files: \.(xml|urdf|sdf|xacro)$
+
+  # ──────────────────────────────────────────────
+  # reStructuredText / Markdown docs
+  # ──────────────────────────────────────────────
+  - repo: https://github.com/PyCQA/doc8
+    rev: v1.1.2
+    hooks:
+      - id: doc8
+        args: ["--max-line-length=100", "--ignore=D001"]
+        exclude: CHANGELOG\.rst$
+
+  - repo: https://github.com/pre-commit/pygrep-hooks
+    rev: v1.10.0
+    hooks:
+      - id: rst-backticks # catch single-backtick RST mistakes
+      - id: rst-directive-colons # missing :: on RST directives
+      - id: rst-inline-touching-normal # bad RST inline markup
+
+  # ──────────────────────────────────────────────
+  # YAML / JSON prettier (launch files, params, CI configs)
+  # ──────────────────────────────────────────────
+  - repo: https://github.com/pre-commit/mirrors-prettier
+    rev: v4.0.0-alpha.8
+    hooks:
+      - id: prettier
+        files: \.(json|yaml|yml|md)$
+        exclude: (CHANGELOG|package\.xml)

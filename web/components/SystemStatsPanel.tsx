@@ -352,7 +352,7 @@ export default function SystemStatsPanel({
               const linkSpeedBytesPerSec = iface.speed_mbps > 0 ? (iface.speed_mbps * 1000000) / 8 : 0;
               const totalBps = iface.rx_bytes_per_sec + iface.tx_bytes_per_sec;
               const utilizationPercent = linkSpeedBytesPerSec > 0 ? Math.min(100, (totalBps / linkSpeedBytesPerSec) * 100) : -1;
-              
+
               return (
                 <div key={iface.name} className="space-y-2">
                   <div className="flex items-center justify-between">
@@ -373,7 +373,7 @@ export default function SystemStatsPanel({
                       )}
                     </div>
                   </div>
-                  
+
                   {/* Bandwidth utilization bar */}
                   {utilizationPercent >= 0 && (
                     <div>
@@ -392,7 +392,7 @@ export default function SystemStatsPanel({
                       </div>
                     </div>
                   )}
-                  
+
                   <div className="flex justify-between text-xs font-mono bg-gray-800/50 rounded px-2 py-1">
                     <span className="text-green-500">↓ {fmtBps(iface.rx_bytes_per_sec)}</span>
                     <span className="text-gray-500 text-[10px]">
@@ -424,14 +424,14 @@ export default function SystemStatsPanel({
               const claimedPercent = bus.speed_mbps > 0 ? (bus.claimed_bw_mbps / bus.speed_mbps) * 100 : 0;
               const isOversubscribed = claimedPercent > 100;
               const isNearCapacity = claimedPercent > 70 && !isOversubscribed;
-              
+
               // Real-time usage from usbmon (if available)
               const actualUsagePercent = bus.usbmon_available && busBytesPerSec > 0
                 ? Math.min(100, (bus.actual_bytes_per_sec / busBytesPerSec) * 100)
                 : -1;
               const isActualHigh = actualUsagePercent > 70;
               const isActualCritical = actualUsagePercent > 90;
-              
+
               return (
                 <div key={bus.bus_num} className="space-y-2">
                   {/* Bus header */}
@@ -476,7 +476,7 @@ export default function SystemStatsPanel({
                       </div>
                     </div>
                   </div>
-                  
+
                   {/* Real-time bandwidth usage (from usbmon) */}
                   {bus.usbmon_available && (
                     <div className="px-2">
@@ -502,7 +502,7 @@ export default function SystemStatsPanel({
                       )}
                     </div>
                   )}
-                  
+
                   {/* Claimed bandwidth (shown when usbmon not available, or as secondary info) */}
                   <div className="px-2">
                     <div className="flex items-center justify-between text-[10px] mb-1">
@@ -533,7 +533,7 @@ export default function SystemStatsPanel({
                       </div>
                     )}
                   </div>
-                  
+
                   {/* Devices on this bus */}
                   {busDevices.length > 0 && (
                     <div className="pl-4 space-y-2">
@@ -542,10 +542,10 @@ export default function SystemStatsPanel({
                         const speedInfo = getUsbSpeedInfo(dev.speed_mbps);
                         const devBytesPerSec = (dev.speed_mbps * 1000000) / 8;
                         const totalIoBps = dev.read_bytes_per_sec + dev.write_bytes_per_sec;
-                        const devUtilization = dev.is_storage && devBytesPerSec > 0 
-                          ? Math.min(100, (totalIoBps / devBytesPerSec) * 100) 
+                        const devUtilization = dev.is_storage && devBytesPerSec > 0
+                          ? Math.min(100, (totalIoBps / devBytesPerSec) * 100)
                           : -1;
-                        
+
                         // Get device type icon
                         const getDeviceIcon = (devClass: string) => {
                           switch(devClass) {
@@ -562,7 +562,7 @@ export default function SystemStatsPanel({
                             default: return '🔧';
                           }
                         };
-                        
+
                         return (
                           <div key={dev.bus_port} className="border-l-2 border-gray-700 pl-3 py-1">
                             <div className="flex items-start justify-between gap-2">
@@ -588,7 +588,7 @@ export default function SystemStatsPanel({
                                 )}
                               </div>
                             </div>
-                            
+
                             {/* Storage device I/O stats */}
                             {dev.is_storage && (
                               <div className="mt-2 space-y-1 bg-gray-800/30 rounded p-2">

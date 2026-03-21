@@ -23,6 +23,7 @@
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <utility>
 
 // Global usbmon monitor instance
 UsbmonMonitor g_usbmon_monitor;
@@ -48,7 +49,7 @@ void UsbmonMonitor::start()
   // Find available bus files (e.g., 0u, 1u, 2u, ...)
   // Bus 0 ('0u') captures all buses, individual files capture per-bus
   monitor_thread_ = std::thread([this, usbmon_path]() {
-      monitor_loop(usbmon_path);
+        monitor_loop(usbmon_path);
     });
 }
 
@@ -166,7 +167,9 @@ void UsbmonMonitor::parse_usbmon_data(const char * data, size_t len)
     int bus_num = 0;
     try {
       bus_num = std::stoi(bus_str);
-    } catch (...) {continue;}
+    } catch (...) {
+      continue;
+    }
 
     // Find the data length - it's typically after status field for completions
     // Scan for a number that looks like a byte count (skip status which is usually small)
@@ -297,14 +300,17 @@ std::vector<UsbBusStats> read_usb_bus_stats()
       UsbBusStats bus;
       try {
         bus.bus_num = std::stoi(name.substr(3));
-      } catch (...) {continue;}
+      } catch (...) {
+        continue;
+      }
 
       // Read bus speed
       std::string speed_str = read_sysfs_attr(entry.path().string() + "/speed");
       if (!speed_str.empty()) {
         try {
           bus.speed_mbps = std::stoull(speed_str);
-        } catch (...) {}
+        } catch (...) {
+        }
       }
 
       bus.version = get_usb_version(bus.speed_mbps);
@@ -333,7 +339,7 @@ std::vector<UsbBusStats> read_usb_bus_stats()
 
   // Sort by bus number
   std::sort(result.begin(), result.end(),
-    [](const UsbBusStats & a, const UsbBusStats & b) { return a.bus_num < b.bus_num; });
+    [](const UsbBusStats & a, const UsbBusStats & b) {return a.bus_num < b.bus_num;});
 
   return result;
 }
@@ -368,7 +374,8 @@ std::vector<UsbDeviceStats> read_usb_stats(std::vector<UsbBusStats> & buses)
       if (dash_pos != std::string::npos) {
         try {
           dev.bus_num = std::stoi(name.substr(0, dash_pos));
-        } catch (...) {}
+        } catch (...) {
+        }
       }
 
       dev.product = read_sysfs_attr(entry.path().string() + "/product");
@@ -377,14 +384,16 @@ std::vector<UsbDeviceStats> read_usb_stats(std::vector<UsbBusStats> & buses)
       if (!speed_str.empty()) {
         try {
           dev.speed_mbps = std::stoull(speed_str);
-        } catch (...) {}
+        } catch (...) {
+        }
       }
 
       // Read device class
       std::string class_str = read_sysfs_attr(entry.path().string() + "/bDeviceClass");
       if (class_str == "00") {
         // Class defined at interface level, check first interface
-        std::string iface_class = read_sysfs_attr(entry.path().string() + "/" + name + ":1.0/bInterfaceClass");
+        std::string iface_class = read_sysfs_attr(entry.path().string() + "/" + name +
+          ":1.0/bInterfaceClass");
         dev.dev_class = get_usb_class_name(iface_class);
       } else {
         dev.dev_class = get_usb_class_name(class_str);

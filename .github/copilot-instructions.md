@@ -9,6 +9,7 @@ This is a ROS 2 system monitoring dashboard with a **dual-stack architecture**:
 - **rosbridge_server**: External ROS 2 package providing WebSocket bridge on port 9090 for browser↔ROS communication.
 
 **Data flow pattern**:
+
 - System stats (CPU, memory, network, USB) → HTTP polling every 1s to `/api/system`
 - ROS data (logs, nodes, topics) → WebSocket subscription via roslib to rosbridge port 9090
 
@@ -35,14 +36,17 @@ The compiled `web/out/` is committed to the repo so ROS build farm (no npm) work
 ## Frontend Patterns
 
 **Hooks pattern** - All data fetching lives in `web/hooks/`:
+
 - `useSystemStats.ts` → HTTP polling with history tracking for sparkline graphs
 - `useRos.ts` → roslib WebSocket connection, `/rosout` subscription, node/topic discovery
 
 **Component structure**:
+
 - `SystemStatsPanel.tsx` → Resource cards with `Sparkline`, `GaugeBar`, `CoreBars` sub-components
 - Panels receive data from hooks via props (lifted state in `page.tsx`)
 
 **Conventions**:
+
 - Use `"use client"` directive for all components (Next.js App Router)
 - TypeScript interfaces in `web/types/` matching JSON from C++ backend exactly
 - Tailwind for styling; dark theme with gray-800/900 backgrounds
@@ -50,12 +54,14 @@ The compiled `web/out/` is committed to the repo so ROS build farm (no npm) work
 ## Backend Patterns
 
 **System stats collection** in `http_server.cpp`:
+
 - Parse `/proc/stat` → CPU usage delta calculation between samples
 - Parse `/proc/meminfo` → Memory/swap stats
 - Parse `/proc/net/dev` → Network interface bandwidth
 - Parse `/sys/bus/usb/devices/` + `/sys/block/*/stat` → USB device I/O
 
 **Adding new metrics**: Follow the pattern of existing structs (`read_*` function → struct → add to `build_system_json()`). Remember to:
+
 1. Store previous sample in `stats_mtx`-protected state for delta calculations
 2. Update TypeScript interface in `web/types/system.ts` to match
 
@@ -69,8 +75,8 @@ The compiled `web/out/` is committed to the repo so ROS build farm (no npm) work
 
 ## Key Port Assignments
 
-| Service | Port | Configurable |
-|---------|------|--------------|
+| Service                | Port | Configurable                 |
+| ---------------------- | ---- | ---------------------------- |
 | HTTP server (UI + API) | 2525 | Yes (`http_port` launch arg) |
-| rosbridge WebSocket | 9090 | No (hardcoded in frontend) |
-| Next.js dev server | 3000 | N/A (dev only) |
+| rosbridge WebSocket    | 9090 | No (hardcoded in frontend)   |
+| Next.js dev server     | 3000 | N/A (dev only)               |

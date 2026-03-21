@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  pre-commit:
+    runs-on: ubuntu-24.04
+    container: ros:jazzy
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pre-commit
+        run: |
+          apt-get update && apt-get install -y python3-pip
+          pip3 install --break-system-packages pre-commit
+
+      - name: Run pre-commit
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          pre-commit run --all-files
+
+  build-and-test:
+    runs-on: ubuntu-24.04
+    container: ros:jazzy
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          apt-get update
+          rosdep update
+          rosdep install --from-paths . -y --ignore-src
+
+      - name: Build
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          colcon build
+
+      - name: Test
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          colcon test --event-handlers console_direct+
+          colcon test-result --verbose

@@ -138,9 +138,9 @@ static std::vector<NetIfaceStats> read_net_stats()
     uint64_t rx_packets, rx_errs, rx_drop, rx_fifo, rx_frame, rx_compressed, rx_multicast;
     uint64_t tx_packets, tx_errs, tx_drop, tx_fifo, tx_colls, tx_carrier, tx_compressed;
     ss >> ns.rx_bytes >> rx_packets >> rx_errs >> rx_drop >> rx_fifo >> rx_frame >>
-      rx_compressed >> rx_multicast;
+    rx_compressed >> rx_multicast;
     ss >> ns.tx_bytes >> tx_packets >> tx_errs >> tx_drop >> tx_fifo >> tx_colls >>
-      tx_carrier >> tx_compressed;
+    tx_carrier >> tx_compressed;
 
     // Skip loopback
     if (ns.name != "lo") {
