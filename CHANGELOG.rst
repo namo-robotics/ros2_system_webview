@@ -4,6 +4,18 @@ Changelog for package system_webview
 
 Forthcoming
 -----------
+* update resource monitor screenshot
+* feat: add build and SSG manifests, update index files, and enhance system types
+  - Introduced _buildManifest.js and _ssgManifest.js for improved static generation.
+  - Updated index.html to reflect new resource paths and maintain consistency.
+  - Modified index.txt to align with the latest changes in the application structure.
+  - Enhanced UsbBusStats interface in system.ts to include real-time USB traffic metrics.
+* feat: update index.html and index.txt for new styles and scripts; add network and USB stats interfaces
+  - Updated index.html to include new stylesheet and script references.
+  - Modified index.txt to reflect changes in the app page structure.
+  - Removed 'peer' property from several dependencies in package-lock.json.
+  - Added new interfaces for NetworkStats, UsbDeviceStats, and UsbBusStats in system.ts to enhance system monitoring capabilities.
+* Contributors: David Brown
 
 0.0.1 (2026-03-07)
 ------------------
