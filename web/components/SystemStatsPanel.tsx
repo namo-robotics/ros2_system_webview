@@ -425,6 +425,13 @@ export default function SystemStatsPanel({
               const isOversubscribed = claimedPercent > 100;
               const isNearCapacity = claimedPercent > 70 && !isOversubscribed;
               
+              // Real-time usage from usbmon (if available)
+              const actualUsagePercent = bus.usbmon_available && busBytesPerSec > 0
+                ? Math.min(100, (bus.actual_bytes_per_sec / busBytesPerSec) * 100)
+                : -1;
+              const isActualHigh = actualUsagePercent > 70;
+              const isActualCritical = actualUsagePercent > 90;
+              
               return (
                 <div key={bus.bus_num} className="space-y-2">
                   {/* Bus header */}
@@ -436,12 +443,22 @@ export default function SystemStatsPanel({
                           <span className="text-xs font-medium text-gray-300">
                             USB {bus.version} Bus {bus.bus_num}
                           </span>
-                          {isOversubscribed && (
+                          {bus.usbmon_available && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-900/50 text-green-400">
+                              📊 Live
+                            </span>
+                          )}
+                          {isActualCritical && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-900/50 text-red-400 animate-pulse">
+                              🔥 Saturated
+                            </span>
+                          )}
+                          {isOversubscribed && !bus.usbmon_available && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-900/50 text-red-400 animate-pulse">
                               ⚠️ Oversubscribed
                             </span>
                           )}
-                          {isNearCapacity && (
+                          {isNearCapacity && !bus.usbmon_available && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-900/50 text-yellow-400">
                               ⚡ High Load
                             </span>
@@ -460,26 +477,59 @@ export default function SystemStatsPanel({
                     </div>
                   </div>
                   
-                  {/* Bus bandwidth allocation bar */}
+                  {/* Real-time bandwidth usage (from usbmon) */}
+                  {bus.usbmon_available && (
+                    <div className="px-2">
+                      <div className="flex items-center justify-between text-[10px] mb-1">
+                        <span className="text-green-400">📊 Real-time usage</span>
+                        <span className={`font-mono ${isActualCritical ? 'text-red-400' : isActualHigh ? 'text-yellow-400' : 'text-green-400'}`}>
+                          {fmtBps(bus.actual_bytes_per_sec)} ({actualUsagePercent.toFixed(1)}%)
+                        </span>
+                      </div>
+                      <div className="h-2 w-full overflow-hidden rounded-full bg-gray-800">
+                        <div
+                          className="h-full rounded-full transition-all duration-300"
+                          style={{
+                            width: `${Math.max(0, actualUsagePercent)}%`,
+                            backgroundColor: isActualCritical ? '#ef4444' : isActualHigh ? '#f59e0b' : '#22c55e'
+                          }}
+                        />
+                      </div>
+                      {isActualCritical && (
+                        <div className="text-[10px] text-red-400 mt-1">
+                          🔥 USB bus is near saturation! Cameras or devices may be dropping frames.
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  
+                  {/* Claimed bandwidth (shown when usbmon not available, or as secondary info) */}
                   <div className="px-2">
                     <div className="flex items-center justify-between text-[10px] mb-1">
-                      <span className="text-gray-500">Claimed bandwidth</span>
-                      <span className={`font-mono ${isOversubscribed ? 'text-red-400' : isNearCapacity ? 'text-yellow-400' : 'text-gray-400'}`}>
+                      <span className="text-gray-500">
+                        {bus.usbmon_available ? 'Claimed (theoretical)' : 'Claimed bandwidth'}
+                      </span>
+                      <span className={`font-mono ${!bus.usbmon_available && isOversubscribed ? 'text-red-400' : !bus.usbmon_available && isNearCapacity ? 'text-yellow-400' : 'text-gray-400'}`}>
                         {bus.claimed_bw_mbps} / {bus.speed_mbps} Mbps ({claimedPercent.toFixed(0)}%)
                       </span>
                     </div>
-                    <div className="h-2 w-full overflow-hidden rounded-full bg-gray-800">
+                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-800">
                       <div
                         className="h-full rounded-full transition-all duration-500"
                         style={{
                           width: `${Math.min(100, claimedPercent)}%`,
-                          backgroundColor: isOversubscribed ? '#ef4444' : isNearCapacity ? '#f59e0b' : '#22c55e'
+                          backgroundColor: !bus.usbmon_available && isOversubscribed ? '#ef4444' : !bus.usbmon_available && isNearCapacity ? '#f59e0b' : '#6b7280'
                         }}
                       />
                     </div>
-                    {isOversubscribed && (
+                    {isOversubscribed && !bus.usbmon_available && (
                       <div className="text-[10px] text-red-400 mt-1">
                         ⚠️ Devices may experience bandwidth contention. Consider moving devices to different USB controllers.
+                      </div>
+                    )}
+                    {!bus.usbmon_available && bus.device_count > 0 && (
+                      <div className="text-[10px] text-gray-600 mt-1 italic">
+                        💡 For real-time monitoring, run with debugfs: sudo mount -t debugfs none /sys/kernel/debug
                       </div>
                     )}
                   </div>

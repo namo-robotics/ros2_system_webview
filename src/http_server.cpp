@@ -14,6 +14,8 @@
 
 #include <httplib.h>
 
+#include <chrono>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <mutex>
@@ -25,6 +27,7 @@
 
 #include "ament_index_cpp/get_package_share_directory.hpp"
 #include "rclcpp/rclcpp.hpp"
+#include "usb_monitoring.hpp"
 
 // CPU snapshot from /proc/stat
 struct CpuTimes
@@ -153,250 +156,6 @@ static std::vector<NetIfaceStats> read_net_stats()
       result.push_back(ns);
     }
   }
-  return result;
-}
-
-// USB bus/controller info from /sys/bus/usb/devices/usbN
-struct UsbBusStats
-{
-  int bus_num = 0;              // Bus number (1, 2, 3, ...)
-  uint64_t speed_mbps = 0;      // Max bus speed in Mbps
-  std::string version;          // USB version ("1.1", "2.0", "3.0", etc.)
-  std::string controller;       // Controller name/type
-  uint64_t device_count = 0;    // Number of devices on this bus
-  uint64_t claimed_bw_mbps = 0; // Total claimed bandwidth by devices
-};
-
-// USB device info from /sys/bus/usb/devices
-struct UsbDeviceStats
-{
-  std::string bus_port;     // e.g., "1-2"
-  int bus_num = 0;          // Bus number this device is on
-  std::string product;
-  std::string manufacturer;
-  uint64_t speed_mbps = 0;  // USB speed in Mbps
-  std::string dev_class;    // Device class (e.g., "Video", "Mass Storage")
-  // I/O stats (if it's a storage device)
-  bool is_storage = false;
-  std::string block_dev;    // e.g., "sda"
-  uint64_t read_bytes = 0;
-  uint64_t write_bytes = 0;
-};
-
-// Helper to read a sysfs attribute file
-static std::string read_sysfs_attr(const std::string & path)
-{
-  std::ifstream f(path);
-  if (!f.is_open()) {return "";}
-  std::string val;
-  std::getline(f, val);
-  // Trim trailing whitespace/newlines
-  while (!val.empty() && (val.back() == '\n' || val.back() == '\r' || val.back() == ' ')) {
-    val.pop_back();
-  }
-  return val;
-}
-
-// Read block device I/O stats from /sys/block/<dev>/stat
-// Format: reads_completed reads_merged sectors_read ms_reading writes_completed ...
-static std::pair<uint64_t, uint64_t> read_block_io(const std::string & block_dev)
-{
-  std::string path = "/sys/block/" + block_dev + "/stat";
-  std::ifstream f(path);
-  if (!f.is_open()) {return {0, 0};}
-
-  uint64_t reads_completed, reads_merged, sectors_read, ms_reading;
-  uint64_t writes_completed, writes_merged, sectors_written;
-  f >> reads_completed >> reads_merged >> sectors_read >> ms_reading;
-  f >> writes_completed >> writes_merged >> sectors_written;
-
-  // Sectors are typically 512 bytes
-  return {sectors_read * 512, sectors_written * 512};
-}
-
-// Check if a block device is USB-attached by checking its device symlink
-static std::string find_usb_block_device(const std::string & usb_path)
-{
-  // Look for block devices under this USB device
-  namespace fs = std::filesystem;
-  try {
-    for (const auto & entry : fs::recursive_directory_iterator(usb_path)) {
-      if (entry.is_directory() && entry.path().filename().string().rfind("block", 0) == 0) {
-        // Found a block directory, check for actual device
-        for (const auto & block_entry : fs::directory_iterator(entry.path())) {
-          if (block_entry.is_directory()) {
-            return block_entry.path().filename().string();
-          }
-        }
-      }
-    }
-  } catch (...) {
-    // Ignore errors from permission issues
-  }
-  return "";
-}
-
-// Map USB class codes to human-readable names
-static std::string get_usb_class_name(const std::string & class_code)
-{
-  if (class_code.empty() || class_code.length() < 2) {return "";}
-  // Class code is in format "xx/yy/zz" or just "xx"
-  std::string base_class = class_code.substr(0, 2);
-  if (base_class == "01") {return "Audio";}
-  if (base_class == "02") {return "Network";}
-  if (base_class == "03") {return "HID";}
-  if (base_class == "06") {return "Imaging";}
-  if (base_class == "07") {return "Printer";}
-  if (base_class == "08") {return "Storage";}
-  if (base_class == "09") {return "Hub";}
-  if (base_class == "0e") {return "Video";}
-  if (base_class == "10") {return "Audio/Video";}
-  if (base_class == "e0") {return "Wireless";}
-  if (base_class == "ef") {return "Misc";}
-  if (base_class == "ff") {return "Vendor";}
-  return "";
-}
-
-// Get USB version string from speed
-static std::string get_usb_version(uint64_t speed_mbps)
-{
-  if (speed_mbps >= 20000) {return "3.2";}
-  if (speed_mbps >= 10000) {return "3.1";}
-  if (speed_mbps >= 5000) {return "3.0";}
-  if (speed_mbps >= 480) {return "2.0";}
-  if (speed_mbps >= 12) {return "1.1";}
-  return "1.0";
-}
-
-static std::vector<UsbBusStats> read_usb_bus_stats()
-{
-  std::vector<UsbBusStats> result;
-  namespace fs = std::filesystem;
-  const std::string usb_path = "/sys/bus/usb/devices";
-
-  if (!fs::exists(usb_path)) {return result;}
-
-  try {
-    for (const auto & entry : fs::directory_iterator(usb_path)) {
-      std::string name = entry.path().filename().string();
-      // Only look at root hubs (names like "usb1", "usb2", etc.)
-      if (name.rfind("usb", 0) != 0) {continue;}
-
-      UsbBusStats bus;
-      try {
-        bus.bus_num = std::stoi(name.substr(3));
-      } catch (...) {continue;}
-
-      // Read bus speed
-      std::string speed_str = read_sysfs_attr(entry.path().string() + "/speed");
-      if (!speed_str.empty()) {
-        try {
-          bus.speed_mbps = std::stoull(speed_str);
-        } catch (...) {}
-      }
-
-      bus.version = get_usb_version(bus.speed_mbps);
-
-      // Try to get controller info from product name
-      bus.controller = read_sysfs_attr(entry.path().string() + "/product");
-      if (bus.controller.empty()) {
-        bus.controller = "USB " + bus.version + " Controller";
-      }
-
-      result.push_back(bus);
-    }
-  } catch (...) {
-    // Ignore filesystem errors
-  }
-
-  // Sort by bus number
-  std::sort(result.begin(), result.end(),
-    [](const UsbBusStats & a, const UsbBusStats & b) { return a.bus_num < b.bus_num; });
-
-  return result;
-}
-
-static std::vector<UsbDeviceStats> read_usb_stats(std::vector<UsbBusStats> & buses)
-{
-  std::vector<UsbDeviceStats> result;
-  namespace fs = std::filesystem;
-  const std::string usb_path = "/sys/bus/usb/devices";
-
-  // Reset device counts and claimed bandwidth
-  for (auto & bus : buses) {
-    bus.device_count = 0;
-    bus.claimed_bw_mbps = 0;
-  }
-
-  if (!fs::exists(usb_path)) {return result;}
-
-  try {
-    for (const auto & entry : fs::directory_iterator(usb_path)) {
-      std::string name = entry.path().filename().string();
-      // Skip USB hubs (names like "usb1") and interfaces (names containing ":")
-      if (name.rfind("usb", 0) == 0 || name.find(':') != std::string::npos) {
-        continue;
-      }
-
-      UsbDeviceStats dev;
-      dev.bus_port = name;
-
-      // Extract bus number from device name (e.g., "1-2" -> bus 1)
-      auto dash_pos = name.find('-');
-      if (dash_pos != std::string::npos) {
-        try {
-          dev.bus_num = std::stoi(name.substr(0, dash_pos));
-        } catch (...) {}
-      }
-
-      dev.product = read_sysfs_attr(entry.path().string() + "/product");
-      dev.manufacturer = read_sysfs_attr(entry.path().string() + "/manufacturer");
-      std::string speed_str = read_sysfs_attr(entry.path().string() + "/speed");
-      if (!speed_str.empty()) {
-        try {
-          dev.speed_mbps = std::stoull(speed_str);
-        } catch (...) {}
-      }
-
-      // Read device class
-      std::string class_str = read_sysfs_attr(entry.path().string() + "/bDeviceClass");
-      if (class_str == "00") {
-        // Class defined at interface level, check first interface
-        std::string iface_class = read_sysfs_attr(entry.path().string() + "/" + name + ":1.0/bInterfaceClass");
-        dev.dev_class = get_usb_class_name(iface_class);
-      } else {
-        dev.dev_class = get_usb_class_name(class_str);
-      }
-
-      // Skip devices without product name (usually internal hubs)
-      if (dev.product.empty()) {continue;}
-
-      // Check if this USB device has a block device (storage)
-      std::string block_dev = find_usb_block_device(entry.path().string());
-      if (!block_dev.empty()) {
-        dev.is_storage = true;
-        dev.block_dev = block_dev;
-        if (dev.dev_class.empty()) {dev.dev_class = "Storage";}
-        auto [rb, wb] = read_block_io(block_dev);
-        dev.read_bytes = rb;
-        dev.write_bytes = wb;
-      }
-
-      // Update bus statistics
-      for (auto & bus : buses) {
-        if (bus.bus_num == dev.bus_num) {
-          bus.device_count++;
-          bus.claimed_bw_mbps += dev.speed_mbps;
-          break;
-        }
-      }
-
-      result.push_back(dev);
-    }
-  } catch (...) {
-    // Ignore filesystem errors
-  }
-
   return result;
 }
 
@@ -562,7 +321,10 @@ static std::string build_system_json(
        << "\"version\":\"" << bus.version << "\","
        << "\"controller\":\"" << escape_json(bus.controller) << "\","
        << "\"device_count\":" << bus.device_count << ","
-       << "\"claimed_bw_mbps\":" << bus.claimed_bw_mbps << "}";
+       << "\"claimed_bw_mbps\":" << bus.claimed_bw_mbps << ","
+       << "\"usbmon_available\":" << (bus.usbmon_available ? "true" : "false") << ","
+       << "\"actual_bytes\":" << bus.actual_bytes << ","
+       << "\"actual_bytes_per_sec\":" << bus.actual_bytes_per_sec << "}";
   }
   js << "]";
 
@@ -586,6 +348,18 @@ int main(int argc, char ** argv)
   if (!std::filesystem::exists(web_dir)) {
     RCLCPP_ERROR(node->get_logger(), "Web directory not found: %s", web_dir.c_str());
     return 1;
+  }
+
+  // Start usbmon monitoring (requires debugfs mounted and appropriate permissions)
+  // Falls back gracefully if not available
+  g_usbmon_monitor.start();
+  if (g_usbmon_monitor.is_available()) {
+    RCLCPP_INFO(node->get_logger(), "usbmon monitoring enabled for real-time USB bandwidth");
+  } else {
+    RCLCPP_INFO(
+      node->get_logger(),
+      "usbmon not available - showing claimed bandwidth only. "
+      "For real-time USB traffic: mount -t debugfs none /sys/kernel/debug");
   }
 
   // Shared CPU sample (protected by mutex) - background thread updates it once
@@ -670,6 +444,9 @@ int main(int argc, char ** argv)
   // Gracefully stop the HTTP server so it releases the port immediately
   RCLCPP_INFO(node->get_logger(), "Shutting down HTTP server...");
   svr.stop();
+
+  // Stop usbmon monitoring
+  g_usbmon_monitor.stop();
 
   server_thread.join();
   sampler.join();

@@ -55,6 +55,10 @@ export interface UsbBusStats {
   controller: string;
   device_count: number;
   claimed_bw_mbps: number;
+  // Real-time traffic from usbmon (if available)
+  usbmon_available: boolean;
+  actual_bytes: number;
+  actual_bytes_per_sec: number;
 }
 
 export interface SystemStats {

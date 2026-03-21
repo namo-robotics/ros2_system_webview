@@ -5,11 +5,13 @@
         "context": ".."
     },
     "runArgs": [
-        "--network=host"
+        "--network=host",
+        "--privileged"
     ],
     "mounts": [
         "source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,readonly",
-        "source=${localEnv:SSH_AUTH_SOCK},target=/ssh-agent,type=bind"
+        "source=${localEnv:SSH_AUTH_SOCK},target=/ssh-agent,type=bind",
+        "source=/sys/kernel/debug,target=/sys/kernel/debug,type=bind"
     ],
     "containerEnv": {
         "SSH_AUTH_SOCK": "/ssh-agent"

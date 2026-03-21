@@ -1,6 +1,6 @@
 # system_webview
 
-A real-time system monitoring dashboard for ROS 2. It provides a web-based UI that displays live CPU, memory, swap, and load average statistics, a scrollable `/rosout` log viewer, and interactive node and topic browsers — all served from a single ROS 2 node.
+A real-time system monitoring dashboard for ROS 2. It provides a web-based UI that displays live CPU, memory, network bandwidth, USB bus utilization, and load average statistics, a scrollable `/rosout` log viewer, and interactive node and topic browsers — all served from a single ROS 2 node.
 
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
@@ -21,6 +21,25 @@ A real-time system monitoring dashboard for ROS 2. It provides a web-based UI th
 ### Topic Viewer
 
 ![Topic Viewer](assets/topics.png)
+
+## Enabling Real-Time USB Monitoring
+
+By default, the dashboard shows *claimed* USB bandwidth based on device speeds. For **actual** real-time USB traffic monitoring (useful for detecting camera saturation), enable usbmon:
+
+```bash
+# Load the usbmon kernel module
+sudo modprobe usbmon
+
+# Mount debugfs (skip if already mounted)
+mountpoint -q /sys/kernel/debug || sudo mount -t debugfs none /sys/kernel/debug
+
+# Verify usbmon is available
+sudo ls /sys/kernel/debug/usb/usbmon/
+```
+
+When usbmon is available and the process has read access, USB bus cards will show a "📊 Live" badge with actual bandwidth usage. Without it, only claimed bandwidth is displayed.
+
+> **Note:** The http_server process needs read access to `/sys/kernel/debug/usb/usbmon/0u`. Run with sudo or adjust permissions as needed.
 
 ## Architecture
 
