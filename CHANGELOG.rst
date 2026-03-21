@@ -2,8 +2,8 @@
 Changelog for package system_webview
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.0.2 (2026-03-21)
+------------------
 * update resource monitor screenshot
 * feat: add build and SSG manifests, update index files, and enhance system types
   - Introduced _buildManifest.js and _ssgManifest.js for improved static generation.
