@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRos } from "@/hooks/useRos";
 import { useSystemStats } from "@/hooks/useSystemStats";
+import { useNodeStats } from "@/hooks/useNodeStats";
 import ConnectionBadge from "@/components/ConnectionBadge";
 import LogViewer from "@/components/LogViewer";
 import SystemStatsPanel from "@/components/SystemStatsPanel";
@@ -53,6 +54,7 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState("resources");
   const { status, logs, clearLogs, nodes, topics, echoOnce } = useRos();
   const { stats, cpuHistory, memHistory, netHistory, usbHistory, error: statsError } = useSystemStats();
+  const { nodeStats } = useNodeStats();
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
@@ -90,7 +92,7 @@ export default function Home() {
         )}
 
         {activeTab === "nodes" && (
-          <NodesPanel nodes={nodes} status={status} />
+          <NodesPanel nodes={nodes} nodeStats={nodeStats} status={status} />
         )}
 
         {activeTab === "topics" && (

@@ -16,13 +16,17 @@
 
 #include <chrono>
 #include <cstring>
+#include <dirent.h>
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <mutex>
 #include <numeric>
+#include <regex>
 #include <sstream>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 #include "ament_index_cpp/get_package_share_directory.hpp"
@@ -103,6 +107,274 @@ static LoadAvg read_loadavg()
   std::ifstream f("/proc/loadavg");
   f >> la.one >> la.five >> la.fifteen;
   return la;
+}
+
+// Per-process stats for ROS nodes
+struct ProcessStats
+{
+  pid_t pid = 0;
+  std::string node_name;
+  std::string cmdline;
+  uint64_t utime = 0;       // User mode jiffies
+  uint64_t stime = 0;       // Kernel mode jiffies
+  uint64_t rss_kb = 0;      // Resident set size in KB
+  uint64_t vsize_kb = 0;    // Virtual memory size in KB
+  uint64_t read_bytes = 0;  // Total bytes read (from /proc/<pid>/io)
+  uint64_t write_bytes = 0; // Total bytes written
+  double cpu_percent = 0.0; // Calculated CPU percentage
+  double mem_percent = 0.0; // Calculated memory percentage
+  double read_bps = 0.0;    // Read bandwidth
+  double write_bps = 0.0;   // Write bandwidth
+};
+
+static std::string read_cmdline(pid_t pid)
+{
+  std::string path = "/proc/" + std::to_string(pid) + "/cmdline";
+  std::ifstream f(path);
+  if (!f.is_open()) {return "";}
+  std::string cmdline;
+  std::getline(f, cmdline, '\0');
+  // cmdline has null-separated args, replace with spaces for display
+  std::string result = cmdline;
+  char c;
+  while (f.get(c)) {
+    if (c == '\0') {result += ' ';} else {result += c;}
+  }
+  return result;
+}
+
+// Extract ROS node name from command line arguments
+static std::string extract_node_name_from_cmdline(const std::string & cmdline)
+{
+  // Look for __node:= or --ros-args ... -r __node:=name patterns
+  std::regex node_pattern("__node:=([^\\s]+)");
+  std::smatch match;
+  if (std::regex_search(cmdline, match, node_pattern)) {
+    std::string name = match[1].str();
+    // Add leading slash if not present
+    if (!name.empty() && name[0] != '/') {
+      name = "/" + name;
+    }
+    return name;
+  }
+
+  // Fallback: extract node name from executable path
+  // Parse the first argument (executable path) from cmdline
+  std::istringstream ss(cmdline);
+  std::string exe_path;
+  if (ss >> exe_path) {
+    // Extract basename from the executable path
+    auto last_slash = exe_path.rfind('/');
+    std::string basename = (last_slash != std::string::npos) ?
+      exe_path.substr(last_slash + 1) : exe_path;
+
+    // Skip common non-node executables
+    if (basename == "python3" || basename == "python" ||
+      basename == "ros2" || basename == "node" ||
+      basename == "bash" || basename == "sh")
+    {
+      return "";
+    }
+
+    // Return the basename as node name with leading slash
+    if (!basename.empty()) {
+      return "/" + basename;
+    }
+  }
+
+  return "";
+}
+
+static ProcessStats read_process_stats(pid_t pid, uint64_t total_mem_kb)
+{
+  ProcessStats ps;
+  ps.pid = pid;
+
+  // Read cmdline
+  ps.cmdline = read_cmdline(pid);
+
+  // Extract node name
+  ps.node_name = extract_node_name_from_cmdline(ps.cmdline);
+
+  // Read /proc/<pid>/stat for CPU times
+  std::string stat_path = "/proc/" + std::to_string(pid) + "/stat";
+  std::ifstream stat_file(stat_path);
+  if (stat_file.is_open()) {
+    std::string line;
+    std::getline(stat_file, line);
+    // Format: pid (comm) state ppid ... utime stime ...
+    // utime is field 14, stime is field 15 (1-indexed)
+    // Find the closing paren to skip the comm field which may contain spaces
+    auto paren_pos = line.rfind(')');
+    if (paren_pos != std::string::npos) {
+      std::istringstream ss(line.substr(paren_pos + 2));       // Skip ") "
+      std::string field;
+      std::vector<std::string> fields;
+      while (ss >> field) {
+        fields.push_back(field);
+      }
+      // After (comm), fields are: state(0), ppid(1), ... utime(11), stime(12), ...
+      if (fields.size() > 12) {
+        ps.utime = std::stoull(fields[11]);
+        ps.stime = std::stoull(fields[12]);
+      }
+      // vsize is field 20 (index 18 after comm), rss is field 21 (index 19)
+      if (fields.size() > 21) {
+        ps.vsize_kb = std::stoull(fields[20]) / 1024;         // vsize is in bytes
+        uint64_t rss_pages = std::stoull(fields[21]);
+        ps.rss_kb = rss_pages * 4;         // Assume 4KB pages
+      }
+    }
+  }
+
+  // Read memory info from /proc/<pid>/status as backup/confirmation
+  std::string status_path = "/proc/" + std::to_string(pid) + "/status";
+  std::ifstream status_file(status_path);
+  if (status_file.is_open()) {
+    std::string line;
+    while (std::getline(status_file, line)) {
+      if (line.rfind("VmRSS:", 0) == 0) {
+        std::istringstream ss(line.substr(6));
+        uint64_t val;
+        if (ss >> val) {
+          ps.rss_kb = val;
+        }
+      }
+    }
+  }
+
+  // Read I/O stats from /proc/<pid>/io (may not be accessible without permissions)
+  std::string io_path = "/proc/" + std::to_string(pid) + "/io";
+  std::ifstream io_file(io_path);
+  if (io_file.is_open()) {
+    std::string line;
+    while (std::getline(io_file, line)) {
+      if (line.rfind("read_bytes:", 0) == 0) {
+        std::istringstream ss(line.substr(11));
+        ss >> ps.read_bytes;
+      } else if (line.rfind("write_bytes:", 0) == 0) {
+        std::istringstream ss(line.substr(12));
+        ss >> ps.write_bytes;
+      }
+    }
+  }
+
+  // Calculate memory percentage
+  if (total_mem_kb > 0) {
+    ps.mem_percent = 100.0 * static_cast<double>(ps.rss_kb) / static_cast<double>(total_mem_kb);
+  }
+
+  return ps;
+}
+
+// Find all ROS 2 node processes by scanning /proc
+static std::vector<ProcessStats> find_ros_processes(uint64_t total_mem_kb)
+{
+  std::vector<ProcessStats> result;
+  DIR * proc_dir = opendir("/proc");
+  if (!proc_dir) {return result;}
+
+  struct dirent * entry;
+  while ((entry = readdir(proc_dir)) != nullptr) {
+    // Check if directory name is a number (PID)
+    char * endptr;
+    pid_t pid = strtol(entry->d_name, &endptr, 10);
+    if (*endptr != '\0' || pid <= 0) {continue;}
+
+    std::string cmdline = read_cmdline(pid);
+    if (cmdline.empty()) {continue;}
+
+    // Check if this is a ROS 2 process - look for various indicators
+    bool is_ros_process =
+      cmdline.find("__node:=") != std::string::npos ||   // Explicit node name
+      cmdline.find("--ros-args") != std::string::npos || // ROS 2 args
+      cmdline.find("/opt/ros/") != std::string::npos ||  // ROS install path (includes lib/)
+      cmdline.find("/install/") != std::string::npos;    // Workspace install path
+
+    if (is_ros_process) {
+      ProcessStats ps = read_process_stats(pid, total_mem_kb);
+      if (!ps.node_name.empty()) {
+        result.push_back(ps);
+      }
+    }
+  }
+  closedir(proc_dir);
+  return result;
+}
+
+// Count number of CPU cores
+static int get_num_cores()
+{
+  static int num_cores = 0;
+  if (num_cores == 0) {
+    auto cpu_times = read_cpu_times();
+    num_cores = static_cast<int>(cpu_times.size()) - 1;  // Subtract 1 for aggregate "cpu" line
+    if (num_cores < 1) {num_cores = 1;}
+  }
+  return num_cores;
+}
+
+// Build JSON for node stats
+static std::string build_nodes_json(
+  const std::vector<ProcessStats> & cur,
+  const std::unordered_map<pid_t, ProcessStats> & prev,
+  double total_cpu_delta,
+  double sample_interval_sec)
+{
+  std::ostringstream js;
+  js << std::fixed;
+  js.precision(2);
+
+  int num_cores = get_num_cores();
+
+  js << "{\"nodes\":[";
+  bool first = true;
+  for (const auto & ps : cur) {
+    if (!first) {js << ",";}
+    first = false;
+
+    double cpu_pct = 0.0;
+    double read_bps = 0.0;
+    double write_bps = 0.0;
+
+    auto it = prev.find(ps.pid);
+    if (it != prev.end() && total_cpu_delta > 0) {
+      uint64_t proc_delta = (ps.utime + ps.stime) - (it->second.utime + it->second.stime);
+      // Multiply by num_cores to show percentage of a single core (like htop)
+      // 100% means using one full core
+      cpu_pct = 100.0 * static_cast<double>(proc_delta) * num_cores / total_cpu_delta;
+
+      // I/O bandwidth
+      if (ps.read_bytes >= it->second.read_bytes) {
+        read_bps = static_cast<double>(ps.read_bytes - it->second.read_bytes) / sample_interval_sec;
+      }
+      if (ps.write_bytes >= it->second.write_bytes) {
+        write_bps =
+          static_cast<double>(ps.write_bytes - it->second.write_bytes) / sample_interval_sec;
+      }
+    }
+
+    // Escape JSON strings
+    auto escape_json = [](const std::string & s) {
+        std::string result;
+        for (char c : s) {
+          if (c == '"') {result += "\\\"";} else if (c == '\\') {
+            result += "\\\\";
+          } else if (c < 32) {result += ' ';} else {result += c;}
+        }
+        return result;
+      };
+
+    js << "{\"name\":\"" << escape_json(ps.node_name) << "\","
+       << "\"pid\":" << ps.pid << ","
+       << "\"cpu_percent\":" << cpu_pct << ","
+       << "\"mem_percent\":" << ps.mem_percent << ","
+       << "\"mem_mb\":" << (static_cast<double>(ps.rss_kb) / 1024.0) << ","
+       << "\"read_bytes_per_sec\":" << read_bps << ","
+       << "\"write_bytes_per_sec\":" << write_bps << "}";
+  }
+  js << "]}";
+  return js.str();
 }
 
 // Network interface stats from /proc/net/dev
@@ -370,6 +642,19 @@ int main(int argc, char ** argv)
   std::vector<UsbBusStats> init_buses = read_usb_bus_stats();
   std::vector<UsbDeviceStats> prev_usb = read_usb_stats(init_buses);
 
+  // Per-node process stats tracking
+  MemInfo init_mem = read_meminfo();
+  std::unordered_map<pid_t, ProcessStats> prev_node_stats;
+  uint64_t prev_total_cpu = 0;
+  if (!prev_cpu.empty()) {
+    prev_total_cpu = prev_cpu[0].total();
+  }
+  // Initialize node stats
+  auto init_nodes = find_ros_processes(init_mem.total_kb);
+  for (const auto & ps : init_nodes) {
+    prev_node_stats[ps.pid] = ps;
+  }
+
   std::thread sampler([&]() {
       while (rclcpp::ok()) {
         std::this_thread::sleep_for(std::chrono::seconds(1));
@@ -377,11 +662,21 @@ int main(int argc, char ** argv)
         auto net_snapshot = read_net_stats();
         auto bus_snapshot = read_usb_bus_stats();
         auto usb_snapshot = read_usb_stats(bus_snapshot);
+        auto mem_snapshot = read_meminfo();
+        auto node_snapshot = find_ros_processes(mem_snapshot.total_kb);
         {
           std::lock_guard<std::mutex> lk(stats_mtx);
           prev_cpu = cpu_snapshot;
           prev_net = net_snapshot;
           prev_usb = usb_snapshot;
+          // Update node stats
+          if (!cpu_snapshot.empty()) {
+            prev_total_cpu = cpu_snapshot[0].total();
+          }
+          prev_node_stats.clear();
+          for (const auto & ps : node_snapshot) {
+            prev_node_stats[ps.pid] = ps;
+          }
         }
       }
     });
@@ -415,6 +710,32 @@ int main(int argc, char ** argv)
           usb_buses,
           prev_usb_snapshot, cur_usb,
           1.0),   // sample interval in seconds
+        "application/json");
+    });
+
+  // API: per-node resource stats
+  svr.Get("/api/nodes", [&](const httplib::Request & /*req*/, httplib::Response & res) {
+      std::unordered_map<pid_t, ProcessStats> prev_nodes_snapshot;
+      uint64_t prev_cpu_total_snapshot = 0;
+      {
+        std::lock_guard<std::mutex> lk(stats_mtx);
+        prev_nodes_snapshot = prev_node_stats;
+        prev_cpu_total_snapshot = prev_total_cpu;
+      }
+
+      auto mem = read_meminfo();
+      auto cur_nodes = find_ros_processes(mem.total_kb);
+      auto cur_cpu = read_cpu_times();
+
+      // Calculate total CPU delta for percentage calculation
+      double total_cpu_delta = 0.0;
+      if (!cur_cpu.empty()) {
+        total_cpu_delta = static_cast<double>(cur_cpu[0].total() - prev_cpu_total_snapshot);
+      }
+
+      res.set_header("Access-Control-Allow-Origin", "*");
+      res.set_content(
+        build_nodes_json(cur_nodes, prev_nodes_snapshot, total_cpu_delta, 1.0),
         "application/json");
     });
 

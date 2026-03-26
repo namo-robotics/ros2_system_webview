@@ -2,5 +2,7 @@ build/
 install/
 log/
 
+node_modules/
+
 # VS Code C/C++ IntelliSense cache
 .vscode/browse.vc.db*

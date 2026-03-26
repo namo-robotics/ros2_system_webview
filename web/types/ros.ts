@@ -41,3 +41,18 @@ export const LOG_LEVEL_SEVERITY: Record<LogLevel, number> = {
   FATAL: 4,
   UNKNOWN: 5,
 };
+
+/** Per-node resource stats from /api/nodes */
+export interface NodeStats {
+  name: string;
+  pid: number;
+  cpu_percent: number;
+  mem_percent: number;
+  mem_mb: number;
+  read_bytes_per_sec: number;
+  write_bytes_per_sec: number;
+}
+
+export interface NodeStatsResponse {
+  nodes: NodeStats[];
+}
