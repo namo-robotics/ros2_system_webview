@@ -68,12 +68,7 @@ repos:
         entry: ament_cpplint
         language: system
         files: \.(h\+\+|h|hh|hxx|hpp|cuh|c|cc|cpp|cu|c\+\+|cxx|tpp|txx)$
-        args:
-          [
-            "--linelength=100",
-            "--filter=-whitespace/newline,-build/include_order,-legal/copyright,-whitespace/comments,-whitespace/blank_line,-build/header_guard",
-            "--root=src",
-          ]
+        args: ["--linelength=100"]
 
       # CMake — formatting
       - id: ament_lint_cmake

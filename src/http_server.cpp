@@ -12,11 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <dirent.h>
+
 #include <httplib.h>
 
 #include <chrono>
 #include <cstring>
-#include <dirent.h>
 #include <filesystem>
 #include <fstream>
 #include <map>
@@ -119,10 +120,10 @@ struct ProcessStats
   uint64_t stime = 0;       // Kernel mode jiffies
   uint64_t rss_kb = 0;      // Resident set size in KB
   uint64_t vsize_kb = 0;    // Virtual memory size in KB
-  uint64_t read_bytes = 0;  // Total bytes read (from /proc/<pid>/io)
-  uint64_t write_bytes = 0; // Total bytes written
-  double cpu_percent = 0.0; // Calculated CPU percentage
-  double mem_percent = 0.0; // Calculated memory percentage
+  uint64_t read_bytes = 0;   // Total bytes read (from /proc/<pid>/io)
+  uint64_t write_bytes = 0;  // Total bytes written
+  double cpu_percent = 0.0;  // Calculated CPU percentage
+  double mem_percent = 0.0;  // Calculated memory percentage
   double read_bps = 0.0;    // Read bandwidth
   double write_bps = 0.0;   // Write bandwidth
 };
@@ -286,10 +287,10 @@ static std::vector<ProcessStats> find_ros_processes(uint64_t total_mem_kb)
 
     // Check if this is a ROS 2 process - look for various indicators
     bool is_ros_process =
-      cmdline.find("__node:=") != std::string::npos ||   // Explicit node name
-      cmdline.find("--ros-args") != std::string::npos || // ROS 2 args
-      cmdline.find("/opt/ros/") != std::string::npos ||  // ROS install path (includes lib/)
-      cmdline.find("/install/") != std::string::npos;    // Workspace install path
+      cmdline.find("__node:=") != std::string::npos ||    // Explicit node name
+      cmdline.find("--ros-args") != std::string::npos ||  // ROS 2 args
+      cmdline.find("/opt/ros/") != std::string::npos ||   // ROS install path (includes lib/)
+      cmdline.find("/install/") != std::string::npos;     // Workspace install path
 
     if (is_ros_process) {
       ProcessStats ps = read_process_stats(pid, total_mem_kb);
