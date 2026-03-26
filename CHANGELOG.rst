@@ -2,6 +2,15 @@
 Changelog for package system_webview
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* fix lint errors
+* add per-node resource monitoring
+* Refactor HTML and TypeScript configuration for improved readability
+  - Updated the HTML structure in index.html for better formatting and consistency.
+  - Simplified the TypeScript configuration in tsconfig.json by consolidating array elements for "lib" and "paths" options.
+* Contributors: David Brown
+
 0.0.2 (2026-03-21)
 ------------------
 * update resource monitor screenshot
