@@ -48,8 +48,9 @@ void UsbmonMonitor::start()
 
   // Find available bus files (e.g., 0u, 1u, 2u, ...)
   // Bus 0 ('0u') captures all buses, individual files capture per-bus
-  monitor_thread_ = std::thread([this, usbmon_path]() {
-        monitor_loop(usbmon_path);
+  monitor_thread_ = std::thread(
+    [this, usbmon_path]() {
+      monitor_loop(usbmon_path);
     });
 }
 
@@ -338,7 +339,8 @@ std::vector<UsbBusStats> read_usb_bus_stats()
   }
 
   // Sort by bus number
-  std::sort(result.begin(), result.end(),
+  std::sort(
+    result.begin(), result.end(),
     [](const UsbBusStats & a, const UsbBusStats & b) {return a.bus_num < b.bus_num;});
 
   return result;
@@ -392,7 +394,8 @@ std::vector<UsbDeviceStats> read_usb_stats(std::vector<UsbBusStats> & buses)
       std::string class_str = read_sysfs_attr(entry.path().string() + "/bDeviceClass");
       if (class_str == "00") {
         // Class defined at interface level, check first interface
-        std::string iface_class = read_sysfs_attr(entry.path().string() + "/" + name +
+        std::string iface_class = read_sysfs_attr(
+          entry.path().string() + "/" + name +
           ":1.0/bInterfaceClass");
         dev.dev_class = get_usb_class_name(iface_class);
       } else {

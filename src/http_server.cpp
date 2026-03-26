@@ -57,7 +57,7 @@ static std::vector<CpuTimes> read_cpu_times()
     std::istringstream ss(line);
     CpuTimes c{};
     ss >> c.name >> c.user >> c.nice >> c.system >> c.idle
-       >> c.iowait >> c.irq >> c.softirq >> c.steal;
+    >> c.iowait >> c.irq >> c.softirq >> c.steal;
     result.push_back(c);
   }
   return result;
@@ -686,7 +686,8 @@ int main(int argc, char ** argv)
   httplib::Server svr;
 
   // API: system stats
-  svr.Get("/api/system", [&](const httplib::Request & /*req*/, httplib::Response & res) {
+  svr.Get(
+    "/api/system", [&](const httplib::Request & /*req*/, httplib::Response & res) {
       std::vector<CpuTimes> prev_cpu_snapshot;
       std::vector<NetIfaceStats> prev_net_snapshot;
       std::vector<UsbDeviceStats> prev_usb_snapshot;
@@ -715,7 +716,8 @@ int main(int argc, char ** argv)
     });
 
   // API: per-node resource stats
-  svr.Get("/api/nodes", [&](const httplib::Request & /*req*/, httplib::Response & res) {
+  svr.Get(
+    "/api/nodes", [&](const httplib::Request & /*req*/, httplib::Response & res) {
       std::unordered_map<pid_t, ProcessStats> prev_nodes_snapshot;
       uint64_t prev_cpu_total_snapshot = 0;
       {
@@ -743,7 +745,8 @@ int main(int argc, char ** argv)
   // Static file serving
   svr.set_mount_point("/", web_dir.c_str());
 
-  svr.set_error_handler([](const httplib::Request & /*req*/, httplib::Response & res) {
+  svr.set_error_handler(
+    [](const httplib::Request & /*req*/, httplib::Response & res) {
       res.set_content("404 Not Found", "text/plain");
       res.status = 404;
     });
