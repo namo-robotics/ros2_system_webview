@@ -2,8 +2,8 @@
 Changelog for package system_webview
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.0.3 (2026-03-26)
+------------------
 * fix lint errors
 * add per-node resource monitoring
 * Refactor HTML and TypeScript configuration for improved readability
