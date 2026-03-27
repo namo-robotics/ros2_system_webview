@@ -18,6 +18,7 @@ pkg_check_modules(HTTPLIB REQUIRED cpp-httplib)
 
 add_executable(http_server
   src/http_server.cpp
+  src/process_stats.cpp
   src/usb_monitoring.cpp
 )
 

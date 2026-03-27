@@ -190,9 +190,12 @@ export default function NodesPanel({ nodes, nodeStats, status }: NodesPanelProps
                 </td>
                 <td className="px-4 py-3 text-right tabular-nums">
                   {node.stats ? (
-                    <span className={node.stats.cpu_percent > 50 ? "text-amber-400" : "text-gray-300"}>
-                      {node.stats.cpu_percent.toFixed(1)}%
-                    </span>
+                    <div className="flex flex-col items-end">
+                      <span className={node.stats.cpu_percent > 50 ? "text-amber-400" : "text-gray-300"}>
+                        {node.stats.cpu_percent.toFixed(1)}%
+                      </span>
+                      <span className="text-xs text-gray-500">of system</span>
+                    </div>
                   ) : (
                     <span className="text-gray-500">—</span>
                   )}
@@ -201,7 +204,7 @@ export default function NodesPanel({ nodes, nodeStats, status }: NodesPanelProps
                   {node.stats ? (
                     <div className="flex flex-col items-end">
                       <span className="text-gray-300">{node.stats.mem_mb.toFixed(1)} MB</span>
-                      <span className="text-xs text-gray-500">{node.stats.mem_percent.toFixed(1)}%</span>
+                      <span className="text-xs text-gray-500">{node.stats.mem_percent.toFixed(2)}% of system</span>
                     </div>
                   ) : (
                     <span className="text-gray-500">—</span>
